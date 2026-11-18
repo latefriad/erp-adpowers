@@ -1,9 +1,9 @@
-import { useState } from 'react';
-import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
   BarChart3, Wallet, Target, Users, FileBarChart2, FileText, FileCheck2, Receipt,
   Truck, Megaphone, FlaskConical, CheckSquare, Layers, Briefcase,
-  Settings, Menu, X, Sun, Moon, LogOut, Search, Sparkles
+  Settings, Menu, X, Sun, Moon, LogOut, Search, Sparkles, ChevronDown, PanelLeftClose, PanelLeftOpen
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
@@ -58,8 +58,19 @@ export default function Layout() {
   const { t, lang, setLang } = useLanguage();
   const { isDark, toggleTheme } = useTheme();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [sidebarHidden, setSidebarHidden] = useState(() => {
+    try { return localStorage.getItem('adpowrs_sidebar_hidden') === 'true'; } catch (e) { return false; }
+  });
+  const [openGroups, setOpenGroups] = useState(() => {
+    try {
+      const saved = localStorage.getItem('adpowrs_nav_groups');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {}
+    return { overview: true, billing: true, crm: true, operations: false, system: false };
+  });
   const [searchQuery, setSearchQuery] = useState('');
   const [searchRes, setSearchRes] = useState(null);
 
@@ -67,6 +78,37 @@ export default function Layout() {
     ...sec,
     items: sec.items.filter((item) => item.roles.includes(user?.role))
   })).filter((sec) => sec.items.length > 0);
+
+  // Auto-open the section containing the current route
+  useEffect(() => {
+    const activeSec = NAV_SECTIONS.find((sec) =>
+      sec.items.some((item) => location.pathname === item.to || location.pathname.startsWith(item.to + '/'))
+    );
+    if (activeSec) {
+      setOpenGroups((prev) => {
+        if (prev[activeSec.groupKey]) return prev;
+        const next = { ...prev, [activeSec.groupKey]: true };
+        try { localStorage.setItem('adpowrs_nav_groups', JSON.stringify(next)); } catch (e) {}
+        return next;
+      });
+    }
+  }, [location.pathname]);
+
+  const toggleGroup = (groupKey) => {
+    setOpenGroups((prev) => {
+      const next = { ...prev, [groupKey]: !prev[groupKey] };
+      try { localStorage.setItem('adpowrs_nav_groups', JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
+  };
+
+  const toggleDesktopSidebar = () => {
+    setSidebarHidden((prev) => {
+      const next = !prev;
+      try { localStorage.setItem('adpowrs_sidebar_hidden', String(next)); } catch (e) {}
+      return next;
+    });
+  };
 
   const handleSearch = async (val) => {
     setSearchQuery(val);
@@ -101,34 +143,47 @@ export default function Layout() {
         </div>
       </div>
 
-      <nav className="flex-1 overflow-y-auto p-3 space-y-4">
-        {visibleSections.map((section) => (
-          <div key={section.groupKey} className="space-y-1">
-            <p className="px-3 pt-1 pb-1 text-[11px] font-extrabold uppercase tracking-wider text-[var(--text-muted)]/80">
-              {t(`navGroups.${section.groupKey}`)}
-            </p>
-            {section.items.map((item) => {
-              const Icon = item.icon;
-              return (
-                <NavLink
-                  key={item.to}
-                  to={item.to}
-                  onClick={() => setDrawerOpen(false)}
-                  className={({ isActive }) =>
-                    `flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm font-semibold transition-colors ${
-                      isActive
-                        ? 'bg-[var(--brand-primary)] text-white shadow-sm'
-                        : 'text-[var(--text-muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--text-main)]'
-                    }`
-                  }
-                >
-                  <Icon className="w-4 h-4 shrink-0" />
-                  <span className="truncate">{t(`nav.${item.key}`)}</span>
-                </NavLink>
-              );
-            })}
-          </div>
-        ))}
+      <nav className="flex-1 overflow-y-auto p-3 space-y-2">
+        {visibleSections.map((section) => {
+          const isOpen = Boolean(openGroups[section.groupKey]);
+          return (
+            <div key={section.groupKey} className="space-y-1">
+              <button
+                type="button"
+                onClick={() => toggleGroup(section.groupKey)}
+                aria-expanded={isOpen}
+                className="w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-[11px] font-extrabold uppercase tracking-wider text-[var(--text-muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--text-main)] transition-colors cursor-pointer"
+              >
+                <span>{t(`navGroups.${section.groupKey}`)}</span>
+                <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${isOpen ? 'rotate-0' : '-rotate-90 rtl:rotate-90'}`} />
+              </button>
+              {isOpen && (
+                <div className="space-y-0.5 ps-1">
+                  {section.items.map((item) => {
+                    const Icon = item.icon;
+                    return (
+                      <NavLink
+                        key={item.to}
+                        to={item.to}
+                        onClick={() => setDrawerOpen(false)}
+                        className={({ isActive }) =>
+                          `flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm font-semibold transition-colors ${
+                            isActive
+                              ? 'bg-[var(--brand-primary)] text-white shadow-sm'
+                              : 'text-[var(--text-muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--text-main)]'
+                          }`
+                        }
+                      >
+                        <Icon className="w-4 h-4 shrink-0" />
+                        <span className="truncate">{t(`nav.${item.key}`)}</span>
+                      </NavLink>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </nav>
 
       <div className="p-3 border-t border-[var(--border-subtle)] space-y-2">
@@ -151,9 +206,11 @@ export default function Layout() {
   return (
     <div className="min-h-dvh flex bg-[var(--surface-bg)] text-[var(--text-main)]">
       {/* Desktop Sidebar */}
-      <aside className="hidden lg:block w-64 shrink-0 border-e border-[var(--border-subtle)] bg-[var(--surface-card)] sticky top-0 h-dvh">
-        {sidebarContent}
-      </aside>
+      {!sidebarHidden && (
+        <aside className="hidden lg:block w-64 shrink-0 border-e border-[var(--border-subtle)] bg-[var(--surface-card)] sticky top-0 h-dvh">
+          {sidebarContent}
+        </aside>
+      )}
 
       {/* Mobile Drawer */}
       {drawerOpen && (
@@ -213,6 +270,16 @@ export default function Layout() {
               className="lg:hidden p-2 rounded-xl hover:bg-[var(--surface-subtle)] cursor-pointer"
             >
               <Menu className="w-5 h-5" />
+            </button>
+
+            <button
+              type="button"
+              onClick={toggleDesktopSidebar}
+              aria-label={sidebarHidden ? 'Show sidebar' : 'Hide sidebar'}
+              title={sidebarHidden ? 'إظهار القائمة' : 'إخفاء القائمة'}
+              className="hidden lg:inline-flex p-2 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-bg)] hover:bg-[var(--surface-subtle)] cursor-pointer"
+            >
+              {sidebarHidden ? <PanelLeftOpen className="w-4 h-4" /> : <PanelLeftClose className="w-4 h-4" />}
             </button>
 
             {user?.role !== 'TEAM' && (
