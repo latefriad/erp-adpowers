@@ -2,13 +2,21 @@ export const translations = {
   ar: {
     brand: 'Adpowrs Digital',
     erpSubtitle: 'نظام إدارة الوكالة الرقمية',
+    navGroups: {
+      overview: 'القيادة والأرباح',
+      billing: 'الفواتير والمالية',
+      crm: 'المبيعات والعملاء',
+      operations: 'الإعلانات والمشاريع',
+      system: 'النظام'
+    },
     nav: {
       dashboard: 'لوحة المالية',
       benefits: 'أرباحي',
       leads: 'العملاء المحتملين',
       clients: 'العملاء 360°',
       clientReports: 'تقارير العملاء',
-      invoices: 'الفواتير وعروض الأسعار',
+      invoices: 'الفواتير',
+      quotes: 'عروض الأسعار',
       expenses: 'المصاريف والميزانية',
       suppliers: 'الموردين',
       adspend: 'صرف الإعلانات',
@@ -80,13 +88,21 @@ export const translations = {
   fr: {
     brand: 'Adpowrs Digital',
     erpSubtitle: 'ERP Agence Digitale',
+    navGroups: {
+      overview: 'Pilotage & Bénéfices',
+      billing: 'Facturation & Finance',
+      crm: 'CRM & Clients',
+      operations: 'Media Buying & Projets',
+      system: 'Système'
+    },
     nav: {
       dashboard: 'Tableau Financier',
       benefits: 'Mes Bénéfices',
       leads: 'Leads CRM',
       clients: 'Clients 360°',
       clientReports: 'Rapports Clients',
-      invoices: 'Factures & Devis',
+      invoices: 'Factures',
+      quotes: 'Devis',
       expenses: 'Dépenses & Budgets',
       suppliers: 'Fournisseurs',
       adspend: 'Ad Spend',
@@ -158,13 +174,21 @@ export const translations = {
   en: {
     brand: 'Adpowrs Digital',
     erpSubtitle: 'Digital Agency ERP',
+    navGroups: {
+      overview: 'Overview & Profits',
+      billing: 'Billing & Finance',
+      crm: 'CRM & Clients',
+      operations: 'Media Buying & Ops',
+      system: 'System'
+    },
     nav: {
       dashboard: 'Financial Dashboard',
       benefits: 'Owner Benefits',
       leads: 'Leads CRM',
       clients: 'Clients 360°',
       clientReports: 'Client Reports',
-      invoices: 'Invoices & Quotes',
+      invoices: 'Invoices',
+      quotes: 'Quotes',
       expenses: 'Expenses & Budgets',
       suppliers: 'Suppliers',
       adspend: 'Ad Spend',

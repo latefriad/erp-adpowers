@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
 import {
-  BarChart3, Wallet, Target, Users, FileBarChart2, FileText, Receipt,
+  BarChart3, Wallet, Target, Users, FileBarChart2, FileText, FileCheck2, Receipt,
   Truck, Megaphone, FlaskConical, CheckSquare, Layers, Briefcase,
   Settings, Menu, X, Sun, Moon, LogOut, Search, Sparkles
 } from 'lucide-react';
@@ -10,21 +10,47 @@ import { useLanguage } from '../context/LanguageContext';
 import { useTheme } from '../context/ThemeContext';
 import { gasCall } from '../lib/api';
 
-const NAV_ITEMS = [
-  { to: '/dashboard', key: 'dashboard', icon: BarChart3, roles: ['ADMIN', 'ACCOUNTANT'] },
-  { to: '/benefits', key: 'benefits', icon: Wallet, roles: ['ADMIN'] },
-  { to: '/leads', key: 'leads', icon: Target, roles: ['ADMIN', 'ACCOUNTANT', 'MEDIA_BUYER'] },
-  { to: '/clients', key: 'clients', icon: Users, roles: ['ADMIN', 'ACCOUNTANT', 'MEDIA_BUYER'] },
-  { to: '/client-reports', key: 'clientReports', icon: FileBarChart2, roles: ['ADMIN', 'ACCOUNTANT', 'MEDIA_BUYER'] },
-  { to: '/invoices', key: 'invoices', icon: FileText, roles: ['ADMIN', 'ACCOUNTANT'] },
-  { to: '/expenses', key: 'expenses', icon: Receipt, roles: ['ADMIN', 'ACCOUNTANT'] },
-  { to: '/suppliers', key: 'suppliers', icon: Truck, roles: ['ADMIN', 'ACCOUNTANT'] },
-  { to: '/adspend', key: 'adspend', icon: Megaphone, roles: ['ADMIN', 'ACCOUNTANT', 'MEDIA_BUYER'] },
-  { to: '/testili', key: 'testili', icon: FlaskConical, roles: ['ADMIN', 'MEDIA_BUYER'] },
-  { to: '/tasks', key: 'tasks', icon: CheckSquare, roles: ['ADMIN', 'ACCOUNTANT', 'MEDIA_BUYER', 'TEAM'] },
-  { to: '/project-templates', key: 'templates', icon: Layers, roles: ['ADMIN', 'MEDIA_BUYER'] },
-  { to: '/services', key: 'services', icon: Briefcase, roles: ['ADMIN', 'ACCOUNTANT'] },
-  { to: '/settings', key: 'settings', icon: Settings, roles: ['ADMIN'] }
+const NAV_SECTIONS = [
+  {
+    groupKey: 'overview',
+    items: [
+      { to: '/dashboard', key: 'dashboard', icon: BarChart3, roles: ['ADMIN', 'ACCOUNTANT'] },
+      { to: '/benefits', key: 'benefits', icon: Wallet, roles: ['ADMIN'] }
+    ]
+  },
+  {
+    groupKey: 'billing',
+    items: [
+      { to: '/invoices', key: 'invoices', icon: FileText, roles: ['ADMIN', 'ACCOUNTANT'] },
+      { to: '/quotes', key: 'quotes', icon: FileCheck2, roles: ['ADMIN', 'ACCOUNTANT'] },
+      { to: '/expenses', key: 'expenses', icon: Receipt, roles: ['ADMIN', 'ACCOUNTANT'] },
+      { to: '/suppliers', key: 'suppliers', icon: Truck, roles: ['ADMIN', 'ACCOUNTANT'] }
+    ]
+  },
+  {
+    groupKey: 'crm',
+    items: [
+      { to: '/leads', key: 'leads', icon: Target, roles: ['ADMIN', 'ACCOUNTANT', 'MEDIA_BUYER'] },
+      { to: '/clients', key: 'clients', icon: Users, roles: ['ADMIN', 'ACCOUNTANT', 'MEDIA_BUYER'] },
+      { to: '/client-reports', key: 'clientReports', icon: FileBarChart2, roles: ['ADMIN', 'ACCOUNTANT', 'MEDIA_BUYER'] }
+    ]
+  },
+  {
+    groupKey: 'operations',
+    items: [
+      { to: '/adspend', key: 'adspend', icon: Megaphone, roles: ['ADMIN', 'ACCOUNTANT', 'MEDIA_BUYER'] },
+      { to: '/testili', key: 'testili', icon: FlaskConical, roles: ['ADMIN', 'MEDIA_BUYER'] },
+      { to: '/tasks', key: 'tasks', icon: CheckSquare, roles: ['ADMIN', 'ACCOUNTANT', 'MEDIA_BUYER', 'TEAM'] },
+      { to: '/project-templates', key: 'templates', icon: Layers, roles: ['ADMIN', 'MEDIA_BUYER'] },
+      { to: '/services', key: 'services', icon: Briefcase, roles: ['ADMIN', 'ACCOUNTANT'] }
+    ]
+  },
+  {
+    groupKey: 'system',
+    items: [
+      { to: '/settings', key: 'settings', icon: Settings, roles: ['ADMIN'] }
+    ]
+  }
 ];
 
 export default function Layout() {
@@ -37,7 +63,10 @@ export default function Layout() {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchRes, setSearchRes] = useState(null);
 
-  const visibleNav = NAV_ITEMS.filter((item) => item.roles.includes(user?.role));
+  const visibleSections = NAV_SECTIONS.map((sec) => ({
+    ...sec,
+    items: sec.items.filter((item) => item.roles.includes(user?.role))
+  })).filter((sec) => sec.items.length > 0);
 
   const handleSearch = async (val) => {
     setSearchQuery(val);
@@ -72,27 +101,34 @@ export default function Layout() {
         </div>
       </div>
 
-      <nav className="flex-1 overflow-y-auto p-3 space-y-1">
-        {visibleNav.map((item) => {
-          const Icon = item.icon;
-          return (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              onClick={() => setDrawerOpen(false)}
-              className={({ isActive }) =>
-                `flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold transition-colors ${
-                  isActive
-                    ? 'bg-[var(--brand-primary)] text-white shadow-sm'
-                    : 'text-[var(--text-muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--text-main)]'
-                }`
-              }
-            >
-              <Icon className="w-4 h-4 shrink-0" />
-              <span className="truncate">{t(`nav.${item.key}`)}</span>
-            </NavLink>
-          );
-        })}
+      <nav className="flex-1 overflow-y-auto p-3 space-y-4">
+        {visibleSections.map((section) => (
+          <div key={section.groupKey} className="space-y-1">
+            <p className="px-3 pt-1 pb-1 text-[11px] font-extrabold uppercase tracking-wider text-[var(--text-muted)]/80">
+              {t(`navGroups.${section.groupKey}`)}
+            </p>
+            {section.items.map((item) => {
+              const Icon = item.icon;
+              return (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  onClick={() => setDrawerOpen(false)}
+                  className={({ isActive }) =>
+                    `flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm font-semibold transition-colors ${
+                      isActive
+                        ? 'bg-[var(--brand-primary)] text-white shadow-sm'
+                        : 'text-[var(--text-muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--text-main)]'
+                    }`
+                  }
+                >
+                  <Icon className="w-4 h-4 shrink-0" />
+                  <span className="truncate">{t(`nav.${item.key}`)}</span>
+                </NavLink>
+              );
+            })}
+          </div>
+        ))}
       </nav>
 
       <div className="p-3 border-t border-[var(--border-subtle)] space-y-2">

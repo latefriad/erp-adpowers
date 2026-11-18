@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Plus, Download, Mail, MessageCircle, CreditCard, CheckCircle,
@@ -30,12 +30,16 @@ function makeDefaultForm(docType = 'FACTURE', clientId = '', defaultTaxRate = 19
   };
 }
 
-export default function Invoices() {
+export default function Invoices({ defaultTab = 'FACTURE' }) {
   const { t } = useLanguage();
   const { settings } = useAuth();
   const qc = useQueryClient();
 
-  const [tab, setTab] = useState('FACTURE'); // FACTURE | DEVIS | RECURRING
+  const [tab, setTab] = useState(defaultTab); // FACTURE | DEVIS | RECURRING
+
+  useEffect(() => {
+    setTab(defaultTab);
+  }, [defaultTab]);
   const [createOpen, setCreateOpen] = useState(false);
   const [payModal, setPayModal] = useState(null);
   const [payForm, setPayForm] = useState({ amount: '', method: 'VIREMENT', paymentDate: todayIso(), reference: '' });

@@ -77,7 +77,8 @@ export default function App() {
                     <Route path="/clients" element={<RoleGuard roles={['ADMIN', 'ACCOUNTANT', 'MEDIA_BUYER']}><Clients /></RoleGuard>} />
                     <Route path="/clients/:id" element={<RoleGuard roles={['ADMIN', 'ACCOUNTANT', 'MEDIA_BUYER']}><ClientDetail /></RoleGuard>} />
                     <Route path="/client-reports" element={<RoleGuard roles={['ADMIN', 'ACCOUNTANT', 'MEDIA_BUYER']}><ClientReports /></RoleGuard>} />
-                    <Route path="/invoices" element={<RoleGuard roles={['ADMIN', 'ACCOUNTANT']}><Invoices /></RoleGuard>} />
+                    <Route path="/invoices" element={<RoleGuard roles={['ADMIN', 'ACCOUNTANT']}><Invoices defaultTab="FACTURE" /></RoleGuard>} />
+                    <Route path="/quotes" element={<RoleGuard roles={['ADMIN', 'ACCOUNTANT']}><Invoices defaultTab="DEVIS" /></RoleGuard>} />
                     <Route path="/expenses" element={<RoleGuard roles={['ADMIN', 'ACCOUNTANT']}><Expenses /></RoleGuard>} />
                     <Route path="/suppliers" element={<RoleGuard roles={['ADMIN', 'ACCOUNTANT']}><Suppliers /></RoleGuard>} />
                     <Route path="/adspend" element={<RoleGuard roles={['ADMIN', 'ACCOUNTANT', 'MEDIA_BUYER']}><AdSpend /></RoleGuard>} />
