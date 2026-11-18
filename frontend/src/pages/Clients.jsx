@@ -62,15 +62,15 @@ export default function Clients() {
           <h1 className="text-2xl font-extrabold">{t('nav.clients')}</h1>
           <p className="text-xs text-[var(--text-muted)]">{clients.length} عميل مسجل</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
           <input
             type="search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder={t('common.search')}
-            className="input-field w-56 text-xs"
+            className="input-field flex-1 sm:w-56 text-xs"
           />
-          <button type="button" onClick={() => setModalOpen(true)} className="btn-primary text-xs">
+          <button type="button" onClick={() => setModalOpen(true)} className="btn-primary text-xs shrink-0">
             <Plus className="w-4 h-4" /> عميل جديد
           </button>
         </div>
@@ -144,7 +144,7 @@ export default function Clients() {
               ⚠️ تنبيه: يوجد عميل بنفس الهاتف أو الإيميل ({duplicateMatch.company || duplicateMatch.name})
             </div>
           )}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div><label className="block text-xs font-semibold mb-1">اسم جهة الاتصال</label><input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="input-field" /></div>
             <div><label className="block text-xs font-semibold mb-1">الشركة / البراند</label><input required value={form.company} onChange={(e) => setForm({ ...form, company: e.target.value })} className="input-field" /></div>
             <div><label className="block text-xs font-semibold mb-1">الإيميل</label><input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="input-field" /></div>

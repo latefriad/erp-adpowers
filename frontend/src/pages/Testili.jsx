@@ -106,7 +106,7 @@ export default function Testili() {
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="اختبار منتج جديد (Testili)">
         <form onSubmit={handleSave} className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-semibold mb-1">العميل</label>
               <select required value={form.clientId} onChange={(e) => setForm({ ...form, clientId: e.target.value })} className="input-field">

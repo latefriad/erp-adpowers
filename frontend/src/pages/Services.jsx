@@ -77,7 +77,7 @@ export default function Services() {
 
       <Modal open={open} onClose={() => setOpen(false)} title="إضافة خدمة جديدة">
         <form onSubmit={handleSave} className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div><label className="block text-xs font-semibold mb-1">اسم الخدمة</label><input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="input-field" /></div>
             <div><label className="block text-xs font-semibold mb-1">الفئة</label><input value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} className="input-field" /></div>
             <div><label className="block text-xs font-semibold mb-1">سعر التكلفة الأساسي</label><input type="number" value={form.basePrice} onChange={(e) => setForm({ ...form, basePrice: e.target.value })} className="input-field" /></div>

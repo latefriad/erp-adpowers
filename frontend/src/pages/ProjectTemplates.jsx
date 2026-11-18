@@ -120,7 +120,7 @@ export default function ProjectTemplates() {
 
       <Modal open={createOpen} onClose={() => setCreateOpen(false)} title="إنشاء قالب SOP جديد">
         <form onSubmit={handleCreate} className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div><label className="block text-xs font-semibold mb-1">اسم القالب</label><input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="input-field" /></div>
             <div>
               <label className="block text-xs font-semibold mb-1">نوع الخدمة</label>

@@ -139,6 +139,16 @@ export default function Leads() {
                             متابعة: {lead.followUpDate} {isOverdue ? '⚠️' : ''}
                           </p>
                         )}
+                        <div className="md:hidden pt-1">
+                          <select
+                            aria-label="Change lead stage"
+                            value={lead.stage}
+                            onChange={(e) => moveStage(lead.id, e.target.value)}
+                            className="input-field py-1 text-xs"
+                          >
+                            {STAGES.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
+                          </select>
+                        </div>
                         <div className="flex items-center justify-between pt-1 border-t border-[var(--border-subtle)]">
                           <a
                             href={buildWhatsAppUrl(lead.phone, `السلام عليكم ${lead.name}، معك فريق Adpowrs Digital بخصوص مشروعكم.`)}
@@ -214,7 +224,7 @@ export default function Leads() {
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="إضافة عميل محتمل (Lead)">
         <form onSubmit={handleSave} className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div><label className="block text-xs font-semibold mb-1">الاسم</label><input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="input-field" /></div>
             <div><label className="block text-xs font-semibold mb-1">الشركة / البراند</label><input value={form.company} onChange={(e) => setForm({ ...form, company: e.target.value })} className="input-field" /></div>
             <div><label className="block text-xs font-semibold mb-1">الهاتف</label><input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className="input-field" placeholder="0550..." /></div>

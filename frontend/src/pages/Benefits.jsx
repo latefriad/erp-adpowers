@@ -145,7 +145,7 @@ export default function Benefits() {
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="إضافة عملية شخصية / سحب">
         <form onSubmit={handleSave} className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-semibold mb-1">النوع</label>
               <select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })} className="input-field">
@@ -160,7 +160,7 @@ export default function Benefits() {
               <input type="date" required value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} className="input-field" />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-semibold mb-1">الفئة</label>
               <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} className="input-field">

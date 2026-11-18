@@ -111,6 +111,16 @@ export default function Tasks() {
                         <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${STATUS_COLORS[tk.priority] || ''}`}>{tk.priority}</span>
                       </div>
                       {tk.description && <p className="text-xs text-[var(--text-muted)] line-clamp-2">{tk.description}</p>}
+                      <div className="md:hidden pt-1">
+                        <select
+                          aria-label="Change task status"
+                          value={tk.status}
+                          onChange={(e) => moveStatus(tk.id, e.target.value)}
+                          className="input-field py-1 text-xs"
+                        >
+                          {COLS.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
+                        </select>
+                      </div>
                       <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-[var(--border-subtle)] text-[11px] text-[var(--text-muted)]">
                         <span>{tk.clientName || 'داخلي'} • {tk.assigneeName || '-'}</span>
                         <span className="font-semibold">{tk.dueDate || '-'}</span>
@@ -188,7 +198,7 @@ export default function Tasks() {
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="إنشاء مهمة جديدة">
         <form onSubmit={handleSave} className="space-y-3">
           <div><label className="block text-xs font-semibold mb-1">عنوان المهمة</label><input required value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} className="input-field" /></div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-semibold mb-1">العميل (اختياري)</label>
               <select value={form.clientId} onChange={(e) => setForm({ ...form, clientId: e.target.value })} className="input-field">

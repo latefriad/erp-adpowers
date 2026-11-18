@@ -113,7 +113,7 @@ export default function Settings() {
         <p className="text-xs text-[var(--text-muted)]">هوية Adpowrs Digital، المستخدمين (4 أدوار)، النسخ الاحتياطي في Google Drive، والأرشفة السنوية</p>
       </div>
 
-      <div className="flex flex-wrap gap-2">
+      <div className="flex gap-2 overflow-x-auto pb-1">
         {[
           { key: 'agency', label: 'ملف الوكالة والهوية' },
           { key: 'users', label: 'فريق العمل (4 أدوار)' },
@@ -124,7 +124,7 @@ export default function Settings() {
             key={tb.key}
             type="button"
             onClick={() => setTab(tb.key)}
-            className={`px-4 py-2 rounded-xl text-xs font-bold cursor-pointer ${
+            className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap shrink-0 cursor-pointer ${
               tab === tb.key ? 'bg-[var(--brand-primary)] text-white' : 'card text-[var(--text-muted)]'
             }`}
           >

@@ -239,7 +239,7 @@ export default function Invoices({ defaultTab = 'FACTURE' }) {
       )}
 
       {/* Tabs */}
-      <div className="flex gap-2">
+      <div className="flex gap-2 overflow-x-auto pb-1">
         {[
           { key: 'FACTURE', label: `الفواتير (${allInvoices.filter((i) => i.docType === 'FACTURE').length})` },
           { key: 'DEVIS', label: `عروض الأسعار (${allInvoices.filter((i) => i.docType === 'DEVIS').length})` },
@@ -249,7 +249,7 @@ export default function Invoices({ defaultTab = 'FACTURE' }) {
             key={tb.key}
             type="button"
             onClick={() => setTab(tb.key)}
-            className={`px-4 py-2 rounded-xl text-xs font-bold cursor-pointer ${
+            className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap shrink-0 cursor-pointer ${
               tab === tb.key ? 'bg-[var(--brand-primary)] text-white' : 'card text-[var(--text-muted)]'
             }`}
           >
@@ -417,7 +417,7 @@ export default function Invoices({ defaultTab = 'FACTURE' }) {
       {/* Create Invoice / Quote Modal */}
       <Modal open={createOpen} onClose={() => setCreateOpen(false)} title="إنشاء فاتورة / عرض سعر" size="lg">
         <form onSubmit={handleCreate} className="space-y-4">
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             <div>
               <label className="block text-xs font-semibold mb-1">النوع</label>
               <select value={form.docType} onChange={(e) => setForm({ ...form, docType: e.target.value })} className="input-field">
@@ -455,7 +455,7 @@ export default function Invoices({ defaultTab = 'FACTURE' }) {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             <div><label className="block text-xs font-semibold mb-1">تاريخ الإصدار</label><input type="date" value={form.issueDate} onChange={(e) => setForm({ ...form, issueDate: e.target.value })} className="input-field" /></div>
             <div><label className="block text-xs font-semibold mb-1">تاريخ الاستحقاق</label><input type="date" value={form.dueDate} onChange={(e) => setForm({ ...form, dueDate: e.target.value })} className="input-field" /></div>
             <div><label className="block text-xs font-semibold mb-1">خصم / Remise</label><input type="number" min="0" value={form.discount} onChange={(e) => setForm({ ...form, discount: Number(e.target.value || 0) })} className="input-field" /></div>
@@ -469,7 +469,7 @@ export default function Invoices({ defaultTab = 'FACTURE' }) {
           </div>
 
           {/* Line Items */}
-          <div className="space-y-2">
+          <div className="space-y-2.5">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold">البنود / Lignes</span>
               <button
@@ -481,16 +481,19 @@ export default function Invoices({ defaultTab = 'FACTURE' }) {
               </button>
             </div>
             {form.items.map((it, idx) => (
-              <div key={idx} className="grid grid-cols-12 gap-2 items-center">
-                <input required placeholder="الوصف" value={it.description} onChange={(e) => updateItem(idx, { description: e.target.value })} className="input-field col-span-5 text-xs" />
-                <input type="number" min="1" placeholder="الكمية" value={it.quantity} onChange={(e) => updateItem(idx, { quantity: Number(e.target.value || 1) })} className="input-field col-span-2 text-xs" />
-                <input type="number" min="0" step="0.01" placeholder="السعر" value={it.unitPrice} onChange={(e) => updateItem(idx, { unitPrice: Number(e.target.value || 0) })} className="input-field col-span-2 text-xs" />
-                <input type="number" min="0" placeholder="TVA%" value={it.taxRate} onChange={(e) => updateItem(idx, { taxRate: Number(e.target.value || 0) })} className="input-field col-span-2 text-xs" />
+              <div key={idx} className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center p-2.5 sm:p-0 rounded-xl bg-[var(--surface-subtle)] sm:bg-transparent">
+                <input required placeholder="الوصف" value={it.description} onChange={(e) => updateItem(idx, { description: e.target.value })} className="input-field sm:col-span-5 text-xs" />
+                <div className="grid grid-cols-3 sm:contents gap-2">
+                  <input type="number" min="1" placeholder="الكمية" value={it.quantity} onChange={(e) => updateItem(idx, { quantity: Number(e.target.value || 1) })} className="input-field sm:col-span-2 text-xs" />
+                  <input type="number" min="0" step="0.01" placeholder="السعر" value={it.unitPrice} onChange={(e) => updateItem(idx, { unitPrice: Number(e.target.value || 0) })} className="input-field sm:col-span-2 text-xs" />
+                  <input type="number" min="0" placeholder="TVA%" value={it.taxRate} onChange={(e) => updateItem(idx, { taxRate: Number(e.target.value || 0) })} className="input-field sm:col-span-2 text-xs" />
+                </div>
                 <button
                   type="button"
                   disabled={form.items.length === 1}
                   onClick={() => setForm((p) => ({ ...p, items: p.items.filter((_, i) => i !== idx) }))}
-                  className="col-span-1 text-rose-500 disabled:opacity-30 cursor-pointer"
+                  aria-label="Remove line"
+                  className="sm:col-span-1 text-rose-500 disabled:opacity-30 cursor-pointer"
                 >
                   <Trash2 className="w-4 h-4 mx-auto" />
                 </button>
@@ -527,7 +530,7 @@ export default function Invoices({ defaultTab = 'FACTURE' }) {
       {/* Record Payment Modal */}
       <Modal open={Boolean(payModal)} onClose={() => setPayModal(null)} title={`تسجيل دفعة — ${payModal?.number || ''}`}>
         <form onSubmit={handleRecordPay} className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div><label className="block text-xs font-semibold mb-1">المبلغ ({payModal?.currency})</label><input type="number" step="0.01" required value={payForm.amount} onChange={(e) => setPayForm({ ...payForm, amount: e.target.value })} className="input-field" /></div>
             <div><label className="block text-xs font-semibold mb-1">تاريخ الدفع</label><input type="date" required value={payForm.paymentDate} onChange={(e) => setPayForm({ ...payForm, paymentDate: e.target.value })} className="input-field" /></div>
             <div>
@@ -551,7 +554,7 @@ export default function Invoices({ defaultTab = 'FACTURE' }) {
       {/* Recurring Modal */}
       <Modal open={recOpen} onClose={() => setRecOpen(false)} title="إعداد فاتورة دورية (Recurring)">
         <form onSubmit={handleSaveRecurring} className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-semibold mb-1">العميل</label>
               <select value={recForm.clientId} onChange={(e) => setRecForm({ ...recForm, clientId: e.target.value })} className="input-field">

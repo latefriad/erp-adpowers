@@ -116,7 +116,7 @@ export default function Suppliers() {
 
       <Modal open={supModal} onClose={() => setSupModal(false)} title="إضافة مورد جديد">
         <form onSubmit={handleSaveSup} className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div><label className="block text-xs font-semibold mb-1">اسم المورد</label><input required value={supForm.name} onChange={(e) => setSupForm({ ...supForm, name: e.target.value })} className="input-field" /></div>
             <div><label className="block text-xs font-semibold mb-1">الفئة</label><input value={supForm.category} onChange={(e) => setSupForm({ ...supForm, category: e.target.value })} className="input-field" /></div>
             <div><label className="block text-xs font-semibold mb-1">الإيميل</label><input type="email" value={supForm.email} onChange={(e) => setSupForm({ ...supForm, email: e.target.value })} className="input-field" /></div>
@@ -131,7 +131,7 @@ export default function Suppliers() {
 
       <Modal open={billModal} onClose={() => setBillModal(false)} title="إضافة فاتورة مورد (Payable)">
         <form onSubmit={handleSaveBill} className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-semibold mb-1">المورد</label>
               <select required value={billForm.supplierId} onChange={(e) => setBillForm({ ...billForm, supplierId: e.target.value })} className="input-field">

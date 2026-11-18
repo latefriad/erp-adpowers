@@ -125,7 +125,7 @@ export default function Expenses() {
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="إضافة مصروف جديد">
         <form onSubmit={handleSave} className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div><label className="block text-xs font-semibold mb-1">التاريخ</label><input type="date" required value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} className="input-field" /></div>
             <div>
               <label className="block text-xs font-semibold mb-1">الفئة</label>
@@ -165,7 +165,7 @@ export default function Expenses() {
 
       <Modal open={budgetOpen} onClose={() => setBudgetOpen(false)} title="تحديد الميزانية الشهرية وسقف المصاريف">
         <form onSubmit={handleSaveBudget} className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div><label className="block text-xs font-semibold mb-1">الشهر</label><input type="month" value={budgetForm.month} onChange={(e) => setBudgetForm({ ...budgetForm, month: e.target.value })} className="input-field" /></div>
             <div><label className="block text-xs font-semibold mb-1">هدف الإيرادات (DZD)</label><input type="number" value={budgetForm.revenueTarget} onChange={(e) => setBudgetForm({ ...budgetForm, revenueTarget: e.target.value })} className="input-field" /></div>
           </div>

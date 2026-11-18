@@ -215,12 +215,12 @@ export default function Layout() {
       {/* Mobile Drawer */}
       {drawerOpen && (
         <div className="fixed inset-0 z-50 lg:hidden flex">
-          <div className="w-72 max-w-[82vw] bg-[var(--surface-card)] h-full shadow-2xl relative z-10">
+          <div className="w-72 max-w-[85vw] bg-[var(--surface-card)] h-dvh shadow-2xl relative z-10 flex flex-col">
             <button
               type="button"
               onClick={() => setDrawerOpen(false)}
               aria-label="Close menu"
-              className="absolute top-3 end-3 p-1.5 rounded-lg hover:bg-[var(--surface-subtle)]"
+              className="absolute top-3 end-3 p-2 rounded-xl hover:bg-[var(--surface-subtle)] z-20 cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
@@ -233,12 +233,12 @@ export default function Layout() {
       {/* Main Content */}
       <div className="flex-1 flex flex-col min-w-0">
         {demoMode && (
-          <div className="bg-indigo-600 text-white px-4 py-2 text-xs flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
+          <div className="bg-indigo-600 text-white px-3 sm:px-4 py-2 text-xs flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0">
               <Sparkles className="w-4 h-4 shrink-0" />
-              <span>{t('common.demoBanner')}</span>
+              <span className="leading-snug">{t('common.demoBanner')}</span>
             </div>
-            <div className="flex items-center gap-1.5">
+            <div className="flex flex-wrap items-center gap-1.5">
               <span className="opacity-80">Role:</span>
               {[
                 { label: 'Admin', email: 'admin@adpowrs.com' },
@@ -250,7 +250,7 @@ export default function Layout() {
                   key={r.email}
                   type="button"
                   onClick={() => handleDemoRoleSwitch(r.email)}
-                  className={`px-2 py-0.5 rounded-md font-semibold cursor-pointer ${
+                  className={`compact-pill px-2 py-1 rounded-md font-semibold cursor-pointer ${
                     user?.email === r.email ? 'bg-white text-indigo-700' : 'bg-white/15 hover:bg-white/25'
                   }`}
                 >
@@ -261,13 +261,13 @@ export default function Layout() {
           </div>
         )}
 
-        <header className="sticky top-0 z-30 h-16 px-4 lg:px-6 border-b border-[var(--border-subtle)] bg-[var(--surface-card)]/90 backdrop-blur-md flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3 flex-1 max-w-md">
+        <header className="sticky top-0 z-30 min-h-14 py-2 px-3 sm:px-4 lg:px-6 border-b border-[var(--border-subtle)] bg-[var(--surface-card)]/95 backdrop-blur-md flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0 max-w-md">
             <button
               type="button"
               onClick={() => setDrawerOpen(true)}
               aria-label="Open navigation"
-              className="lg:hidden p-2 rounded-xl hover:bg-[var(--surface-subtle)] cursor-pointer"
+              className="lg:hidden p-2 rounded-xl hover:bg-[var(--surface-subtle)] cursor-pointer shrink-0"
             >
               <Menu className="w-5 h-5" />
             </button>
@@ -277,13 +277,13 @@ export default function Layout() {
               onClick={toggleDesktopSidebar}
               aria-label={sidebarHidden ? 'Show sidebar' : 'Hide sidebar'}
               title={sidebarHidden ? 'إظهار القائمة' : 'إخفاء القائمة'}
-              className="hidden lg:inline-flex p-2 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-bg)] hover:bg-[var(--surface-subtle)] cursor-pointer"
+              className="hidden lg:inline-flex p-2 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-bg)] hover:bg-[var(--surface-subtle)] cursor-pointer shrink-0"
             >
               {sidebarHidden ? <PanelLeftOpen className="w-4 h-4" /> : <PanelLeftClose className="w-4 h-4" />}
             </button>
 
             {user?.role !== 'TEAM' && (
-              <div className="relative flex-1">
+              <div className="relative flex-1 min-w-0">
                 <Search className="w-4 h-4 text-[var(--text-muted)] absolute top-1/2 -translate-y-1/2 start-3 pointer-events-none" />
                 <input
                   type="search"
@@ -302,7 +302,7 @@ export default function Layout() {
                           <Link
                             key={c.id}
                             to={`/clients/${c.id}`}
-                            className="block px-2 py-1.5 rounded-lg hover:bg-[var(--surface-subtle)] font-semibold"
+                            className="block px-2 py-2 rounded-lg hover:bg-[var(--surface-subtle)] font-semibold"
                           >
                             {c.company || c.name}
                           </Link>
@@ -316,7 +316,7 @@ export default function Layout() {
                           <Link
                             key={i.id}
                             to="/invoices"
-                            className="block px-2 py-1.5 rounded-lg hover:bg-[var(--surface-subtle)]"
+                            className="block px-2 py-2 rounded-lg hover:bg-[var(--surface-subtle)]"
                           >
                             {i.number || 'DRAFT'} — {i.status}
                           </Link>
@@ -327,7 +327,7 @@ export default function Layout() {
                       <div>
                         <p className="font-bold text-[var(--text-muted)] mb-1">Leads</p>
                         {searchRes.leads.map((l) => (
-                          <Link key={l.id} to="/leads" className="block px-2 py-1.5 rounded-lg hover:bg-[var(--surface-subtle)]">
+                          <Link key={l.id} to="/leads" className="block px-2 py-2 rounded-lg hover:bg-[var(--surface-subtle)]">
                             {l.company || l.name} ({l.stage})
                           </Link>
                         ))}
@@ -342,14 +342,14 @@ export default function Layout() {
             )}
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             <div className="flex items-center rounded-xl border border-[var(--border-subtle)] p-0.5 bg-[var(--surface-bg)]">
               {['ar', 'fr', 'en'].map((code) => (
                 <button
                   key={code}
                   type="button"
                   onClick={() => setLang(code)}
-                  className={`px-2 py-1 text-xs font-bold rounded-lg uppercase cursor-pointer ${
+                  className={`compact-pill px-2 py-1 text-xs font-bold rounded-lg uppercase cursor-pointer ${
                     lang === code ? 'bg-[var(--brand-primary)] text-white' : 'text-[var(--text-muted)]'
                   }`}
                 >
@@ -369,9 +369,59 @@ export default function Layout() {
           </div>
         </header>
 
-        <main className="flex-1 p-4 lg:p-6 max-w-[1600px] w-full mx-auto">
+        <main className="flex-1 p-3 sm:p-4 lg:p-6 pb-24 lg:pb-6 max-w-[1600px] w-full mx-auto">
           <Outlet />
         </main>
+
+        {/* Mobile Bottom Navigation Bar */}
+        <nav
+          aria-label="Mobile navigation"
+          className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-[var(--surface-card)]/95 backdrop-blur-md border-t border-[var(--border-subtle)] mobile-bottom-nav grid grid-cols-5 gap-1 pt-1.5"
+        >
+          {[
+            user?.role === 'ADMIN' || user?.role === 'ACCOUNTANT'
+              ? { to: '/dashboard', key: 'dashboard', icon: BarChart3 }
+              : user?.role === 'MEDIA_BUYER'
+              ? { to: '/leads', key: 'leads', icon: Target }
+              : { to: '/tasks', key: 'tasks', icon: CheckSquare },
+            user?.role === 'ADMIN' || user?.role === 'ACCOUNTANT'
+              ? { to: '/invoices', key: 'invoices', icon: FileText }
+              : { to: '/adspend', key: 'adspend', icon: Megaphone },
+            user?.role === 'ADMIN'
+              ? { to: '/benefits', key: 'benefits', icon: Wallet }
+              : user?.role === 'ACCOUNTANT'
+              ? { to: '/expenses', key: 'expenses', icon: Receipt }
+              : { to: '/clients', key: 'clients', icon: Users },
+            { to: '/tasks', key: 'tasks', icon: CheckSquare }
+          ]
+            .filter((item, idx, arr) => arr.findIndex((x) => x.to === item.to) === idx)
+            .slice(0, 4)
+            .map((item) => {
+              const Icon = item.icon;
+              return (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  className={({ isActive }) =>
+                    `flex flex-col items-center justify-center gap-0.5 py-1 rounded-xl text-[10px] font-bold transition-colors ${
+                      isActive ? 'text-[var(--brand-primary)]' : 'text-[var(--text-muted)]'
+                    }`
+                  }
+                >
+                  <Icon className="w-5 h-5" />
+                  <span className="truncate max-w-16">{t(`nav.${item.key}`)}</span>
+                </NavLink>
+              );
+            })}
+          <button
+            type="button"
+            onClick={() => setDrawerOpen(true)}
+            className="flex flex-col items-center justify-center gap-0.5 py-1 rounded-xl text-[10px] font-bold text-[var(--text-muted)] cursor-pointer"
+          >
+            <Menu className="w-5 h-5" />
+            <span>المزيد</span>
+          </button>
+        </nav>
       </div>
     </div>
   );
