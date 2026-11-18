@@ -43,6 +43,7 @@ export default function Expenses() {
       setForm({ date: todayIso(), category: 'ADS', description: '', amount: '', currency: 'DZD', exchangeRate: 1, notes: '', receiptBase64: '', receiptFileName: '', receiptMimeType: '' });
       qc.invalidateQueries({ queryKey: ['expenses'] });
       qc.invalidateQueries({ queryKey: ['dashboard'] });
+      qc.invalidateQueries({ queryKey: ['benefits'] });
     } catch (err) {
       toast.error(err.message);
     }
@@ -109,7 +110,7 @@ export default function Expenses() {
                   <td>
                     <button
                       type="button"
-                      onClick={async () => { if (confirm(t('common.confirmDelete'))) { await gasCall('deleteExpense', { id: exp.id }); qc.invalidateQueries({ queryKey: ['expenses'] }); } }}
+                      onClick={async () => { if (confirm(t('common.confirmDelete'))) { await gasCall('deleteExpense', { id: exp.id }); qc.invalidateQueries({ queryKey: ['expenses'] }); qc.invalidateQueries({ queryKey: ['dashboard'] }); qc.invalidateQueries({ queryKey: ['benefits'] }); } }}
                       className="p-1.5 text-rose-500 hover:bg-rose-500/10 rounded-lg cursor-pointer"
                     >
                       <Trash2 className="w-4 h-4" />

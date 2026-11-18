@@ -1,32 +1,30 @@
 /**
- * Full-featured Local Demo Engine matching the Google Apps Script API contract.
- * Automatically activates ONLY when no Google Apps Script URL is connected yet,
- * so you can preview & test Adpowrs Digital ERP immediately!
+ * Clean Local Store matching the Google Apps Script API contract.
+ * Starts at 0 across all financial & operational tables so calculations are 100% transparent.
+ * Activates automatically only when no Google Apps Script URL is connected yet.
  */
 
-const STORAGE_KEY = 'adpowrs_demo_db_v1';
+const STORAGE_KEY = 'adpowrs_demo_db_v2';
 
-function seedDemoData() {
-  const ym = new Date().toISOString().slice(0, 7);
-  const today = new Date().toISOString().slice(0, 10);
-  const prevMonth = (() => {
-    const d = new Date();
-    d.setMonth(d.getMonth() - 1);
-    return d.toISOString().slice(0, 7);
-  })();
+function localToday() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
 
+function seedCleanZeroData() {
+  const today = localToday();
   return {
     settings: {
       agencyName: 'Adpowrs Digital',
       tagline: 'Performance Marketing & E-Commerce Growth',
       email: 'contact@adpowrs.com',
-      phone: '+213 550 12 34 56',
-      address: 'Hydra, Alger, Algérie',
+      phone: '+213 550 00 00 00',
+      address: 'Alger, Algérie',
       website: 'https://adpowrs.com',
-      taxId: 'NIF 002616012345678',
-      rcNumber: 'RC 16/00-0123456B26',
-      nisNumber: 'NIS 002616012345',
-      bankAccount: 'BEA 002 00012 1234567890 12',
+      taxId: '',
+      rcNumber: '',
+      nisNumber: '',
+      bankAccount: '',
       logoUrl: '',
       primaryColor: '#6366f1',
       secondaryColor: '#0ea5e9',
@@ -34,141 +32,37 @@ function seedDemoData() {
       defaultTaxRate: 19,
       eurRate: 245,
       usdRate: 225,
-      openingTreasuryBalance: 450000,
-      remindersEnabled: true,
+      openingTreasuryBalance: 0,
+      remindersEnabled: false,
       reminderLeadDays: 3,
       reminderIntervalDays: 5,
-      portalBaseUrl: window.location.origin,
-      lastBackupAt: new Date().toISOString()
+      portalBaseUrl: typeof window !== 'undefined' ? window.location.origin : '',
+      lastBackupAt: ''
     },
     users: [
-      { id: 'usr_admin', name: 'Admin Adpowrs', email: 'admin@adpowrs.com', role: 'ADMIN', phone: '+213550123456', active: true, createdAt: today },
-      { id: 'usr_acc', name: 'Karim Comptable', email: 'compta@adpowrs.com', role: 'ACCOUNTANT', phone: '+213661223344', active: true, createdAt: today },
-      { id: 'usr_mb', name: 'Yacine Media Buyer', email: 'ads@adpowrs.com', role: 'MEDIA_BUYER', phone: '+213770556677', active: true, createdAt: today },
-      { id: 'usr_team', name: 'Sara Creative', email: 'team@adpowrs.com', role: 'TEAM', phone: '+213555889900', active: true, createdAt: today }
+      { id: 'usr_admin', name: 'Admin Adpowrs', email: 'admin@adpowrs.com', role: 'ADMIN', phone: '+213550000000', active: true, createdAt: today },
+      { id: 'usr_acc', name: 'Comptable', email: 'compta@adpowrs.com', role: 'ACCOUNTANT', phone: '', active: true, createdAt: today },
+      { id: 'usr_mb', name: 'Media Buyer', email: 'ads@adpowrs.com', role: 'MEDIA_BUYER', phone: '', active: true, createdAt: today },
+      { id: 'usr_team', name: 'Équipe', email: 'team@adpowrs.com', role: 'TEAM', phone: '', active: true, createdAt: today }
     ],
-    clients: [
-      {
-        id: 'cli_1',
-        name: 'Amine Benali',
-        company: 'DzCosmetics Store',
-        email: 'amine@dzcosmetics.dz',
-        phone: '0551234567',
-        address: 'Oran, Algérie',
-        taxId: '002431098765432',
-        defaultTaxRate: 19,
-        tags: ['E-Commerce', 'Meta Ads', 'VIP'],
-        notes: [{ id: 'nt_1', text: 'Client prioritaire — scaling TikTok prévu le mois prochain.', author: 'Admin Adpowrs', createdAt: today }],
-        portalToken: 'demo-dzcosmetics-portal',
-        createdAt: today
-      },
-      {
-        id: 'cli_2',
-        name: 'Lina Mansouri',
-        company: 'Aura Mode DZ',
-        email: 'lina@auramode.dz',
-        phone: '0662345678',
-        address: 'Alger, Algérie',
-        taxId: '',
-        defaultTaxRate: 19,
-        tags: ['Fashion', 'Testili'],
-        notes: [],
-        portalToken: 'demo-auramode-portal',
-        createdAt: today
-      },
-      {
-        id: 'cli_3',
-        name: 'Mehdi Kaci',
-        company: 'TechGear Algérie',
-        email: 'mehdi@techgear.dz',
-        phone: '0773456789',
-        address: 'Sétif, Algérie',
-        taxId: '',
-        defaultTaxRate: 19,
-        tags: ['E-Commerce', 'Website'],
-        notes: [],
-        portalToken: 'demo-techgear-portal',
-        createdAt: today
-      }
-    ],
-    leads: [
-      { id: 'lead_1', name: 'Nabil Ouali', company: 'Parfum El Djazair', phone: '0554998877', email: 'nabil@parfum.dz', source: 'WHATSAPP', stage: 'NEGOTIATION', estimatedValue: 180000, currency: 'DZD', followUpDate: today, assignedTo: 'usr_mb', notes: [{ text: 'Intéressé par Pack Meta Ads + 10 vidéos', author: 'Admin Adpowrs', createdAt: today }], convertedClientId: '', createdAt: today },
-      { id: 'lead_2', name: 'Rania Haddad', company: 'BioCare Lab', phone: '0661776655', email: 'rania@biocare.dz', source: 'ADS', stage: 'QUOTE_SENT', estimatedValue: 120000, currency: 'DZD', followUpDate: '2026-11-10', assignedTo: 'usr_mb', notes: [], convertedClientId: '', createdAt: today },
-      { id: 'lead_3', name: 'Sofiane Boudiaf', company: 'ElectroHome', phone: '0770112233', email: '', source: 'REFERRAL', stage: 'NEW', estimatedValue: 250000, currency: 'DZD', followUpDate: today, assignedTo: 'usr_admin', notes: [], convertedClientId: '', createdAt: today }
-    ],
+    clients: [],
+    leads: [],
     services: [
-      { id: 'srv_1', name: 'Gestion Meta Ads (Mensuel)', category: 'ADS', description: 'Media buying + reporting + optimisation', basePrice: 20000, salePrice: 80000, charges: [{ label: 'Créas & Setup', amount: 15000 }], totalCharges: 15000, netProfit: 65000, currency: 'DZD' },
-      { id: 'srv_2', name: 'Pack Testili (5 Produits)', category: 'TESTILI', description: 'Recherche + Landing + Tests Ads', basePrice: 15000, salePrice: 55000, charges: [{ label: 'Montage Vidéo', amount: 12000 }], totalCharges: 12000, netProfit: 43000, currency: 'DZD' },
+      { id: 'srv_1', name: 'Gestion Meta Ads (Mensuel)', category: 'ADS', description: 'Media buying + reporting + optimisation', basePrice: 20000, salePrice: 60000, charges: [{ label: 'Créas & Setup', amount: 15000 }], totalCharges: 15000, netProfit: 45000, currency: 'DZD' },
+      { id: 'srv_2', name: 'Pack Testili (5 Produits)', category: 'TESTILI', description: 'Recherche + Landing + Tests Ads', basePrice: 15000, salePrice: 45000, charges: [{ label: 'Montage Vidéo', amount: 10000 }], totalCharges: 10000, netProfit: 35000, currency: 'DZD' },
       { id: 'srv_3', name: 'Landing Page COD Conversion', category: 'WEBSITE', description: 'Design + Dev + Pixel + CAPI', basePrice: 25000, salePrice: 95000, charges: [{ label: 'Domaine & Hosting', amount: 8000 }], totalCharges: 8000, netProfit: 87000, currency: 'DZD' }
     ],
-    invoices: [
-      {
-        id: 'fac_1', docType: 'FACTURE', number: 'FAC-2026-00001', clientId: 'cli_1', status: 'PAYEE',
-        issueDate: `${ym}-02`, dueDate: `${ym}-12`, currency: 'DZD', exchangeRate: 1,
-        items: [{ description: 'Gestion Meta Ads + Créatives (Mensuel)', quantity: 1, unitPrice: 150000, taxRate: 19, lineTotal: 178500 }],
-        subtotal: 150000, discount: 0, taxTotal: 28500, total: 178500, totalDzd: 178500,
-        notes: 'Merci pour votre confiance.', publicToken: 'pub-fac-001', sentAt: `${ym}-02`, viewedAt: `${ym}-03`, createdAt: `${ym}-02`
-      },
-      {
-        id: 'fac_2', docType: 'FACTURE', number: 'FAC-2026-00002', clientId: 'cli_2', status: 'EN_ATTENTE',
-        issueDate: `${prevMonth}-18`, dueDate: `${prevMonth}-28`, currency: 'DZD', exchangeRate: 1,
-        items: [{ description: 'Pack Testili + Gestion TikTok Ads', quantity: 1, unitPrice: 95000, taxRate: 19, lineTotal: 113050 }],
-        subtotal: 95000, discount: 0, taxTotal: 18050, total: 113050, totalDzd: 113050,
-        notes: '', publicToken: 'pub-fac-002', sentAt: `${prevMonth}-18`, viewedAt: '', createdAt: `${prevMonth}-18`
-      },
-      {
-        id: 'fac_3', docType: 'FACTURE', number: 'FAC-2026-00003', clientId: 'cli_3', status: 'SENT',
-        issueDate: `${ym}-10`, dueDate: `${ym}-28`, currency: 'EUR', exchangeRate: 245,
-        items: [{ description: 'Création Store E-Commerce + Tracking CAPI', quantity: 1, unitPrice: 600, taxRate: 0, lineTotal: 600 }],
-        subtotal: 600, discount: 0, taxTotal: 0, total: 600, totalDzd: 147000,
-        notes: 'Paiement par virement.', publicToken: 'pub-fac-003', sentAt: `${ym}-10`, viewedAt: `${ym}-11`, createdAt: `${ym}-10`
-      },
-      {
-        id: 'dev_1', docType: 'DEVIS', number: 'DEV-2026-00001', clientId: 'cli_1', status: 'SENT',
-        issueDate: today, dueDate: `${ym}-30`, currency: 'DZD', exchangeRate: 1,
-        items: [{ description: 'Pack 15 Vidéos UGC Performance', quantity: 1, unitPrice: 120000, taxRate: 19, lineTotal: 142800 }],
-        subtotal: 120000, discount: 0, taxTotal: 22800, total: 142800, totalDzd: 142800,
-        notes: 'Valable 15 jours.', publicToken: 'pub-dev-001', sentAt: today, viewedAt: '', createdAt: today
-      }
-    ],
-    payments: [
-      { id: 'pay_1', invoiceId: 'fac_1', clientId: 'cli_1', amount: 178500, currency: 'DZD', exchangeRate: 1, amountDzd: 178500, method: 'VIREMENT', paymentDate: `${ym}-05`, reference: 'VIR-9021', status: 'APPROVED', notes: '' },
-      { id: 'pay_2', invoiceId: 'fac_3', clientId: 'cli_3', amount: 300, currency: 'EUR', exchangeRate: 245, amountDzd: 73500, method: 'VIREMENT', paymentDate: `${ym}-12`, reference: 'ACOMPTE-50', status: 'APPROVED', notes: 'Acompte 50%' }
-    ],
-    recurring: [
-      { id: 'rec_1', clientId: 'cli_1', title: 'Retainer Meta Ads DzCosmetics', frequency: 'MONTHLY', currency: 'DZD', exchangeRate: 1, items: [{ description: 'Gestion Meta Ads Mensuel', quantity: 1, unitPrice: 150000, taxRate: 19 }], discount: 0, nextRunAt: '2026-12-01', active: true }
-    ],
-    expenses: [
-      { id: 'exp_1', date: `${ym}-03`, category: 'LOYER', description: 'Loyer bureau Hydra', amount: 65000, currency: 'DZD', exchangeRate: 1, amountDzd: 65000, receiptUrl: '', notes: '' },
-      { id: 'exp_2', date: `${ym}-06`, category: 'ABONNEMENTS', description: 'Suite Adobe + Figma + Vercel + AI', amount: 120, currency: 'USD', exchangeRate: 225, amountDzd: 27000, receiptUrl: '', notes: '' },
-      { id: 'exp_3', date: `${ym}-09`, category: 'ADS', description: 'Campagne acquisition Adpowrs Digital', amount: 35000, currency: 'DZD', exchangeRate: 1, amountDzd: 35000, receiptUrl: '', notes: '' }
-    ],
-    budgets: [
-      { id: ym, year: Number(ym.slice(0, 4)), month: Number(ym.slice(5, 7)), revenueTarget: 400000, expenseBudgets: { LOYER: 70000, ADS: 50000, ABONNEMENTS: 35000, SALAIRES: 120000 } }
-    ],
-    suppliers: [
-      { id: 'sup_1', name: 'Studio Vidéo Pro Alger', category: 'MATERIEL', email: 'studio@alger.dz', phone: '0550987654', notes: 'Tournage UGC' },
-      { id: 'sup_2', name: 'Freelance Motion Design', category: 'SALAIRES', email: 'motion@dz.com', phone: '0661445566', notes: '' }
-    ],
-    supplierBills: [
-      { id: 'bill_1', supplierId: 'sup_1', description: 'Shooting 10 produits DzCosmetics', category: 'MATERIEL', amount: 32000, currency: 'DZD', exchangeRate: 1, amountDzd: 32000, dueDate: `${ym}-25`, status: 'A_PAYER', paidAt: '', expenseId: '', notes: '' }
-    ],
-    benefits: [
-      { id: 'ben_1', date: `${ym}-08`, type: 'WITHDRAWAL', category: 'PERSONAL', description: 'Retrait personnel fondateur', amountDzd: 50000, notes: '' }
-    ],
-    adSpend: [
-      { id: 'ads_1', clientId: 'cli_1', month: ym, platform: 'META', campaignName: 'Scaling Sérum Vitamine C', clientAdBudget: 200000, actualSpend: 165000, amountBilled: 195000, orders: 412, revenueGenerated: 1150000, notes: 'ROAS excellent sur wilayas nord' },
-      { id: 'ads_2', clientId: 'cli_2', month: ym, platform: 'TIKTOK', campaignName: 'Collection Automne Abaya', clientAdBudget: 120000, actualSpend: 92000, amountBilled: 110000, orders: 185, revenueGenerated: 620000, notes: '' }
-    ],
-    testili: [
-      { id: 'tst_1', clientId: 'cli_1', productName: 'Brosse Nettoyante Visage 3D', productUrl: 'https://dzcosmetics.dz/brosse', platform: 'META', testBudget: 25000, amountSpent: 19500, orders: 48, revenue: 134400, targetCpa: 450, targetRoas: 5, status: 'COMPLETED', verdict: 'WINNER', verdictNotes: 'CPA 406 DZD — prêt pour scaling CBO!', pushedToAdSpend: true, createdAt: today },
-      { id: 'tst_2', clientId: 'cli_2', productName: 'Sac Cuir Minimaliste', productUrl: '', platform: 'TIKTOK', testBudget: 20000, amountSpent: 14000, orders: 12, revenue: 42000, targetCpa: 600, targetRoas: 4, status: 'RUNNING', verdict: 'NEEDS_MORE_DATA', verdictNotes: 'Tester nouveaux hooks UGC', pushedToAdSpend: false, createdAt: today }
-    ],
-    tasks: [
-      { id: 'tsk_1', title: 'Audit Pixel & CAPI DzCosmetics', description: 'Vérifier événements Purchase & InitiateCheckout', clientId: 'cli_1', assignedTo: 'usr_mb', status: 'DONE', priority: 'HIGH', taskType: 'PROJECT', startDate: `${ym}-01`, dueDate: `${ym}-05`, order: 0, updatedAt: today },
-      { id: 'tsk_2', title: 'Montage 5 Reels TikTok Aura Mode', description: 'Sous-titres dynamiques AR/FR', clientId: 'cli_2', assignedTo: 'usr_team', status: 'INPROGRESS', priority: 'HIGH', taskType: 'WEEKLY', startDate: `${ym}-12`, dueDate: `${ym}-20`, order: 1, updatedAt: today },
-      { id: 'tsk_3', title: 'Landing Page COD Brosse 3D', description: 'Version mobile-first avec formulaire rapide', clientId: 'cli_1', assignedTo: 'usr_team', status: 'TODO', priority: 'MEDIUM', taskType: 'PROJECT', startDate: today, dueDate: `${ym}-24`, order: 2, updatedAt: today }
-    ],
+    invoices: [],
+    payments: [],
+    recurring: [],
+    expenses: [],
+    budgets: [],
+    suppliers: [],
+    supplierBills: [],
+    benefits: [],
+    adSpend: [],
+    testili: [],
+    tasks: [],
     templates: [
       {
         id: 'tpl_1', name: 'Onboarding Meta Ads E-Commerce', serviceType: 'META_ADS',
@@ -190,14 +84,9 @@ function seedDemoData() {
         ]
       }
     ],
-    activityLog: [
-      { id: 'act_1', entityType: 'INVOICE', entityId: 'fac_1', clientId: 'cli_1', action: 'INVOICE_PAID', summary: 'Paiement de 178 500 DZD reçu sur FAC-2026-00001', actorName: 'Admin Adpowrs', createdAt: `${ym}-05T10:00:00Z` },
-      { id: 'act_2', entityType: 'CLIENT', entityId: 'cli_1', clientId: 'cli_1', action: 'CLIENT_CREATED', summary: 'Client DzCosmetics Store créé', actorName: 'Admin Adpowrs', createdAt: `${ym}-01T09:00:00Z` }
-    ],
-    backups: [
-      { id: 'bkp_1', name: `Adpowrs_ERP_Backup_${today}_02-00`, url: '#', createdAt: new Date().toISOString() }
-    ],
-    counters: { FACTURE: 3, DEVIS: 1 }
+    activityLog: [],
+    backups: [],
+    counters: { FACTURE: 0, DEVIS: 0 }
   };
 }
 
@@ -206,7 +95,7 @@ function loadDb() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) return JSON.parse(raw);
   } catch (e) {}
-  const seeded = seedDemoData();
+  const seeded = seedCleanZeroData();
   saveDb(seeded);
   return seeded;
 }
@@ -221,16 +110,25 @@ function uid(prefix) {
   return `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
 }
 
+function round2(n) {
+  return Math.round((Number(n || 0) + Number.EPSILON) * 100) / 100;
+}
+
 function enrichInv(inv, db) {
   const pays = db.payments.filter((p) => p.invoiceId === inv.id && p.status !== 'REJECTED');
-  const paidAmount = pays.reduce((s, p) => s + Number(p.amount || 0), 0);
-  const paidDzd = pays.reduce((s, p) => s + Number(p.amountDzd || 0), 0);
-  const total = Number(inv.total || 0);
-  const totalDzd = Number(inv.totalDzd || total * Number(inv.exchangeRate || 1));
-  const remaining = Math.max(0, total - paidAmount);
-  const remainingDzd = Math.max(0, totalDzd - paidDzd);
-  const today = new Date().toISOString().slice(0, 10);
-  const isOverdue = inv.docType === 'FACTURE' && !['DRAFT', 'ANNULEE', 'PAYEE'].includes(inv.status) && remaining > 0 && inv.dueDate && inv.dueDate < today;
+  const paidAmount = round2(pays.reduce((s, p) => s + Number(p.amount || 0), 0));
+  const paidDzd = round2(pays.reduce((s, p) => s + Number(p.amountDzd || 0), 0));
+  const total = round2(inv.total || 0);
+  const totalDzd = round2(inv.totalDzd ?? total * Number(inv.exchangeRate || 1));
+  const remaining = round2(Math.max(0, total - paidAmount));
+  const remainingDzd = round2(Math.max(0, totalDzd - paidDzd));
+  const today = localToday();
+  const isOverdue =
+    inv.docType === 'FACTURE' &&
+    !['DRAFT', 'ANNULEE', 'PAYEE'].includes(inv.status) &&
+    remaining > 0 &&
+    inv.dueDate &&
+    inv.dueDate < today;
   const daysOverdue = isOverdue ? Math.max(0, Math.floor((new Date(today) - new Date(inv.dueDate)) / 86400000)) : 0;
   const client = db.clients.find((c) => c.id === inv.clientId);
   return {
@@ -243,36 +141,58 @@ function enrichInv(inv, db) {
     isOverdue,
     daysOverdue,
     displayStatus: isOverdue ? 'EN_RETARD' : inv.status,
-    clientName: client ? (client.company || client.name) : '',
+    clientName: client ? (client.company || client.name) : (inv.clientName || 'Client'),
     clientEmail: client?.email || '',
     clientPhone: client?.phone || ''
   };
 }
 
 function computeTotals(items = [], discount = 0, rate = 1) {
-  let subtotal = 0, taxTotal = 0;
+  let subtotal = 0;
+  let taxTotal = 0;
   const norm = items.map((it) => {
     const qty = Number(it.quantity || 1);
     const up = Number(it.unitPrice || 0);
     const tr = Number(it.taxRate ?? 19);
-    const net = qty * up;
-    const tax = net * (tr / 100);
+    const net = round2(qty * up);
+    const tax = round2(net * (tr / 100));
     subtotal += net;
     taxTotal += tax;
-    return { description: it.description || '', quantity: qty, unitPrice: up, taxRate: tr, lineTotal: Math.round((net + tax) * 100) / 100 };
+    return {
+      description: String(it.description || ''),
+      quantity: qty,
+      unitPrice: up,
+      taxRate: tr,
+      lineTotal: round2(net + tax)
+    };
   });
-  const disc = Number(discount || 0);
-  const total = Math.max(0, Math.round((subtotal - disc + taxTotal) * 100) / 100);
-  return { items: norm, subtotal: Math.round(subtotal * 100) / 100, discount: disc, taxTotal: Math.round(taxTotal * 100) / 100, total, totalDzd: Math.round(total * Number(rate || 1) * 100) / 100 };
+  const disc = round2(discount || 0);
+  subtotal = round2(subtotal);
+  taxTotal = round2(taxTotal);
+  const total = round2(Math.max(0, subtotal - disc + taxTotal));
+  const fx = Number(rate || 1) || 1;
+  return {
+    items: norm,
+    subtotal,
+    discount: disc,
+    taxTotal,
+    total,
+    totalDzd: round2(total * fx)
+  };
 }
 
 export async function runDemoAction(action, payload = {}, currentUser = null) {
   const db = loadDb();
   const user = currentUser || db.users[0];
   const now = new Date().toISOString();
-  const today = now.slice(0, 10);
+  const today = localToday();
 
   switch (action) {
+    case 'resetAllData': {
+      const fresh = seedCleanZeroData();
+      saveDb(fresh);
+      return { reset: true };
+    }
     case 'login': {
       const email = String(payload.email || '').trim().toLowerCase();
       const found = db.users.find((u) => u.email.toLowerCase() === email) || db.users[0];
@@ -314,57 +234,63 @@ export async function runDemoAction(action, payload = {}, currentUser = null) {
     case 'getDashboard': {
       const opening = Number(db.settings.openingTreasuryBalance || 0);
       const invoices = db.invoices.map((i) => enrichInv(i, db));
-      const allIn = db.payments.reduce((s, p) => s + Number(p.amountDzd || 0), 0);
-      const allOut = db.expenses.reduce((s, e) => s + Number(e.amountDzd || 0), 0);
-      const treasuryBalance = opening + allIn - allOut;
+      const approvedPayments = db.payments.filter((p) => p.status !== 'REJECTED');
+      const allIn = round2(approvedPayments.reduce((s, p) => s + Number(p.amountDzd || 0), 0));
+      const allOut = round2(db.expenses.reduce((s, e) => s + Number(e.amountDzd || 0), 0));
+      const treasuryBalance = round2(opening + allIn - allOut);
 
       const start = payload.startDate || `${today.slice(0, 7)}-01`;
       const end = payload.endDate || `${today.slice(0, 7)}-31`;
-      const pPays = db.payments.filter((p) => p.paymentDate >= start && p.paymentDate <= end);
+      const pPays = approvedPayments.filter((p) => p.paymentDate >= start && p.paymentDate <= end);
       const pExps = db.expenses.filter((e) => e.date >= start && e.date <= end);
       const pInvs = invoices.filter((i) => i.docType === 'FACTURE' && !['DRAFT', 'ANNULEE'].includes(i.status) && i.issueDate >= start && i.issueDate <= end);
 
-      const cashReceived = pPays.reduce((s, p) => s + Number(p.amountDzd || 0), 0);
-      const totalExpenses = pExps.reduce((s, e) => s + Number(e.amountDzd || 0), 0);
-      const netProfit = cashReceived - totalExpenses;
-      const totalBilled = pInvs.reduce((s, i) => s + Number(i.totalDzd || 0), 0);
+      const cashReceived = round2(pPays.reduce((s, p) => s + Number(p.amountDzd || 0), 0));
+      const totalExpenses = round2(pExps.reduce((s, e) => s + Number(e.amountDzd || 0), 0));
+      const netProfit = round2(cashReceived - totalExpenses);
+      const totalBilled = round2(pInvs.reduce((s, i) => s + Number(i.totalDzd || 0), 0));
 
-      let outstandingReceivables = 0, overdueReceivables = 0, overdueCount = 0;
+      let outstandingReceivables = 0;
+      let overdueReceivables = 0;
+      let overdueCount = 0;
       const aging = { notDue: 0, d1_30: 0, d31_60: 0, d60Plus: 0 };
       const overdueList = [];
       invoices.forEach((inv) => {
         if (inv.docType !== 'FACTURE' || ['DRAFT', 'ANNULEE'].includes(inv.status) || inv.remainingDzd <= 0) return;
-        outstandingReceivables += inv.remainingDzd;
+        outstandingReceivables = round2(outstandingReceivables + inv.remainingDzd);
         if (inv.isOverdue) {
-          overdueReceivables += inv.remainingDzd;
+          overdueReceivables = round2(overdueReceivables + inv.remainingDzd);
           overdueCount++;
           overdueList.push(inv);
-          if (inv.daysOverdue <= 30) aging.d1_30 += inv.remainingDzd;
-          else if (inv.daysOverdue <= 60) aging.d31_60 += inv.remainingDzd;
-          else aging.d60Plus += inv.remainingDzd;
-        } else aging.notDue += inv.remainingDzd;
+          if (inv.daysOverdue <= 30) aging.d1_30 = round2(aging.d1_30 + inv.remainingDzd);
+          else if (inv.daysOverdue <= 60) aging.d31_60 = round2(aging.d31_60 + inv.remainingDzd);
+          else aging.d60Plus = round2(aging.d60Plus + inv.remainingDzd);
+        } else {
+          aging.notDue = round2(aging.notDue + inv.remainingDzd);
+        }
       });
 
-      const supplierPayables = db.supplierBills.filter((b) => b.status === 'A_PAYER').reduce((s, b) => s + Number(b.amountDzd || 0), 0);
-      const overduePayables = db.supplierBills.filter((b) => b.status === 'A_PAYER' && b.dueDate < today).reduce((s, b) => s + Number(b.amountDzd || 0), 0);
+      const supplierPayables = round2(db.supplierBills.filter((b) => b.status === 'A_PAYER').reduce((s, b) => s + Number(b.amountDzd || 0), 0));
+      const overduePayables = round2(db.supplierBills.filter((b) => b.status === 'A_PAYER' && b.dueDate < today).reduce((s, b) => s + Number(b.amountDzd || 0), 0));
 
-      const mrr = db.recurring.filter((r) => r.active).reduce((s, r) => {
+      const mrr = round2(db.recurring.filter((r) => r.active).reduce((s, r) => {
         const c = computeTotals(r.items, r.discount, r.exchangeRate).totalDzd;
         return s + (r.frequency === 'QUARTERLY' ? c / 3 : r.frequency === 'YEARLY' ? c / 12 : c);
-      }, 0);
+      }, 0));
 
       const months = [];
       for (let i = 5; i >= 0; i--) {
         const d = new Date();
+        d.setDate(1);
         d.setMonth(d.getMonth() - i);
-        const ym = d.toISOString().slice(0, 7);
-        const ci = db.payments.filter((p) => p.paymentDate.startsWith(ym)).reduce((s, p) => s + Number(p.amountDzd || 0), 0);
-        const ex = db.expenses.filter((e) => e.date.startsWith(ym)).reduce((s, e) => s + Number(e.amountDzd || 0), 0);
-        months.push({ month: ym, cashIn: ci, expenses: ex, profit: ci - ex });
+        const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        const ci = round2(approvedPayments.filter((p) => p.paymentDate.startsWith(ym)).reduce((s, p) => s + Number(p.amountDzd || 0), 0));
+        const ex = round2(db.expenses.filter((e) => e.date.startsWith(ym)).reduce((s, e) => s + Number(e.amountDzd || 0), 0));
+        months.push({ month: ym, cashIn: ci, expenses: ex, profit: round2(ci - ex) });
       }
 
       const expCatMap = {};
-      pExps.forEach((e) => { expCatMap[e.category] = (expCatMap[e.category] || 0) + Number(e.amountDzd || 0); });
+      pExps.forEach((e) => { expCatMap[e.category] = round2((expCatMap[e.category] || 0) + Number(e.amountDzd || 0)); });
       const expensesByCategory = Object.entries(expCatMap).map(([category, total]) => ({
         category, total, pct: totalExpenses > 0 ? Math.round((total / totalExpenses) * 100) : 0
       }));
@@ -372,30 +298,35 @@ export async function runDemoAction(action, payload = {}, currentUser = null) {
       const topClients = db.clients.map((c) => ({
         id: c.id,
         name: c.company || c.name,
-        received: db.payments.filter((p) => p.clientId === c.id).reduce((s, p) => s + Number(p.amountDzd || 0), 0),
-        outstanding: invoices.filter((i) => i.clientId === c.id && i.docType === 'FACTURE' && !['DRAFT', 'ANNULEE'].includes(i.status)).reduce((s, i) => s + i.remainingDzd, 0)
-      })).sort((a, b) => b.received - a.received);
+        received: round2(approvedPayments.filter((p) => p.clientId === c.id).reduce((s, p) => s + Number(p.amountDzd || 0), 0)),
+        outstanding: round2(invoices.filter((i) => i.clientId === c.id && i.docType === 'FACTURE' && !['DRAFT', 'ANNULEE'].includes(i.status)).reduce((s, i) => s + i.remainingDzd, 0))
+      })).filter((c) => c.received > 0 || c.outstanding > 0).sort((a, b) => b.received - a.received);
 
       const curYM = today.slice(0, 7);
       const bRow = db.budgets.find((b) => b.id === curYM) || { revenueTarget: 0, expenseBudgets: {} };
+      const curMonthRev = round2(approvedPayments.filter((p) => p.paymentDate.startsWith(curYM)).reduce((s, p) => s + Number(p.amountDzd || 0), 0));
       const budgetVsActuals = {
         month: curYM,
         revenueTarget: Number(bRow.revenueTarget || 0),
-        revenueActual: cashReceived,
+        revenueActual: curMonthRev,
         categories: Object.entries(bRow.expenseBudgets || {}).map(([category, budget]) => {
-          const actual = db.expenses.filter((e) => e.date.startsWith(curYM) && e.category === category).reduce((s, e) => s + Number(e.amountDzd || 0), 0);
+          const actual = round2(db.expenses.filter((e) => e.date.startsWith(curYM) && e.category === category).reduce((s, e) => s + Number(e.amountDzd || 0), 0));
           return { category, budget: Number(budget), actual, over: Number(budget) > 0 && actual > Number(budget) };
-        })
+        }).filter((c) => c.budget > 0 || c.actual > 0)
       };
 
+      const avgExp = months.reduce((s, m) => s + m.expenses, 0) / 6;
       let runBal = treasuryBalance;
       const forecast = [1, 2, 3].map((off) => {
         const d = new Date();
+        d.setDate(1);
         d.setMonth(d.getMonth() + off);
-        const ym = d.toISOString().slice(0, 7);
-        const expIn = Math.round(mrr + outstandingReceivables * (off === 1 ? 0.5 : 0.2));
-        const expOut = Math.round(Math.max(totalExpenses, 90000));
-        runBal += expIn - expOut;
+        const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        const dueIn = round2(invoices.filter((i) => i.docType === 'FACTURE' && i.remainingDzd > 0 && String(i.dueDate || '').startsWith(ym)).reduce((s, i) => s + i.remainingDzd, 0));
+        const expIn = round2(mrr + dueIn);
+        const billsOut = round2(db.supplierBills.filter((b) => b.status === 'A_PAYER' && String(b.dueDate || '').startsWith(ym)).reduce((s, b) => s + Number(b.amountDzd || 0), 0));
+        const expOut = round2(Math.max(billsOut, avgExp));
+        runBal = round2(runBal + expIn - expOut);
         return { month: ym, expectedIn: expIn, expectedOut: expOut, projectedBalance: runBal };
       });
 
@@ -412,7 +343,7 @@ export async function runDemoAction(action, payload = {}, currentUser = null) {
           outstandingReceivables, overdueReceivables, overdueCount,
           supplierPayables, overduePayables,
           dso: totalBilled > 0 ? Math.round((outstandingReceivables / totalBilled) * 30) : 0,
-          mrr: Math.round(mrr), activeSubscriptions: db.recurring.filter((r) => r.active).length
+          mrr, activeSubscriptions: db.recurring.filter((r) => r.active).length
         },
         aging, overdueList, monthlyCashCurve: months, invoiceStatusBreakdown: statusCounts,
         expensesByCategory, topClients, budgetVsActuals, forecast, recentInvoices: invoices.slice(0, 6)
@@ -422,7 +353,7 @@ export async function runDemoAction(action, payload = {}, currentUser = null) {
     case 'getBenefits': {
       const opening = Number(db.settings.openingTreasuryBalance || 0);
       const merged = [
-        ...db.payments.map((p) => {
+        ...db.payments.filter((p) => p.status !== 'REJECTED').map((p) => {
           const cl = db.clients.find((c) => c.id === p.clientId);
           return { id: `pay_${p.id}`, source: 'INVOICE_PAYMENT', readOnly: true, date: p.paymentDate, type: 'REVENUE', category: 'CLIENT_PAYMENT', description: cl ? (cl.company || cl.name) : 'Client', amountDzd: Number(p.amountDzd), notes: p.notes };
         }),
@@ -430,36 +361,38 @@ export async function runDemoAction(action, payload = {}, currentUser = null) {
         ...db.benefits.map((b) => ({ ...b, source: 'MANUAL', readOnly: false, amountDzd: Number(b.amountDzd) }))
       ].sort((a, b) => b.date.localeCompare(a.date));
 
-      const allRev = merged.filter((t) => t.type === 'REVENUE').reduce((s, t) => s + t.amountDzd, 0);
-      const allExp = merged.filter((t) => t.type === 'EXPENSE').reduce((s, t) => s + t.amountDzd, 0);
-      const allWith = merged.filter((t) => t.type === 'WITHDRAWAL').reduce((s, t) => s + t.amountDzd, 0);
+      const allRev = round2(merged.filter((t) => t.type === 'REVENUE').reduce((s, t) => s + t.amountDzd, 0));
+      const allExp = round2(merged.filter((t) => t.type === 'EXPENSE').reduce((s, t) => s + t.amountDzd, 0));
+      const allWith = round2(merged.filter((t) => t.type === 'WITHDRAWAL').reduce((s, t) => s + t.amountDzd, 0));
 
       const filtered = merged.filter((t) => (!payload.startDate || t.date >= payload.startDate) && (!payload.endDate || t.date <= payload.endDate));
-      const pRev = filtered.filter((t) => t.type === 'REVENUE').reduce((s, t) => s + t.amountDzd, 0);
-      const pExp = filtered.filter((t) => t.type === 'EXPENSE').reduce((s, t) => s + t.amountDzd, 0);
-      const pWith = filtered.filter((t) => t.type === 'WITHDRAWAL').reduce((s, t) => s + t.amountDzd, 0);
+      const pRev = round2(filtered.filter((t) => t.type === 'REVENUE').reduce((s, t) => s + t.amountDzd, 0));
+      const pExp = round2(filtered.filter((t) => t.type === 'EXPENSE').reduce((s, t) => s + t.amountDzd, 0));
+      const pWith = round2(filtered.filter((t) => t.type === 'WITHDRAWAL').reduce((s, t) => s + t.amountDzd, 0));
 
       const monthlySeries = [];
       for (let i = 5; i >= 0; i--) {
-        const d = new Date(); d.setMonth(d.getMonth() - i);
-        const ym = d.toISOString().slice(0, 7);
+        const d = new Date();
+        d.setDate(1);
+        d.setMonth(d.getMonth() - i);
+        const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
         monthlySeries.push({
           month: ym,
-          revenue: merged.filter((t) => t.date.startsWith(ym) && t.type === 'REVENUE').reduce((s, t) => s + t.amountDzd, 0),
-          expense: merged.filter((t) => t.date.startsWith(ym) && t.type === 'EXPENSE').reduce((s, t) => s + t.amountDzd, 0),
-          withdrawal: merged.filter((t) => t.date.startsWith(ym) && t.type === 'WITHDRAWAL').reduce((s, t) => s + t.amountDzd, 0)
+          revenue: round2(merged.filter((t) => t.date.startsWith(ym) && t.type === 'REVENUE').reduce((s, t) => s + t.amountDzd, 0)),
+          expense: round2(merged.filter((t) => t.date.startsWith(ym) && t.type === 'EXPENSE').reduce((s, t) => s + t.amountDzd, 0)),
+          withdrawal: round2(merged.filter((t) => t.date.startsWith(ym) && t.type === 'WITHDRAWAL').reduce((s, t) => s + t.amountDzd, 0))
         });
       }
       return {
-        availableBalance: opening + allRev - allExp - allWith,
+        availableBalance: round2(opening + allRev - allExp - allWith),
         openingBalance: opening,
-        period: { revenue: pRev, expense: pExp, withdrawal: pWith, netProfit: pRev - pExp },
+        period: { revenue: pRev, expense: pExp, withdrawal: pWith, netProfit: round2(pRev - pExp) },
         monthlySeries,
         transactions: filtered
       };
     }
     case 'saveBenefitTx': {
-      const tx = payload.id ? { ...payload } : { id: uid('ben'), ...payload, amountDzd: Number(payload.amountDzd) };
+      const tx = payload.id ? { ...payload, amountDzd: Number(payload.amountDzd) } : { id: uid('ben'), ...payload, amountDzd: Number(payload.amountDzd) };
       if (payload.id) db.benefits = db.benefits.map((b) => (b.id === payload.id ? tx : b));
       else db.benefits.unshift(tx);
       saveDb(db);
@@ -477,7 +410,7 @@ export async function runDemoAction(action, payload = {}, currentUser = null) {
       };
     case 'saveInvoice': {
       const docType = payload.docType === 'DEVIS' ? 'DEVIS' : 'FACTURE';
-      const rate = Number(payload.exchangeRate || (payload.currency === 'EUR' ? db.settings.eurRate : payload.currency === 'USD' ? db.settings.usdRate : 1));
+      const rate = Number(payload.exchangeRate || (payload.currency === 'EUR' ? db.settings.eurRate : payload.currency === 'USD' ? db.settings.usdRate : 1)) || 1;
       const calc = computeTotals(payload.items, payload.discount, rate);
       if (payload.id) {
         db.invoices = db.invoices.map((i) => (i.id === payload.id ? { ...i, ...payload, ...calc, exchangeRate: rate } : i));
@@ -491,10 +424,18 @@ export async function runDemoAction(action, payload = {}, currentUser = null) {
       }
       const inv = {
         id: uid(docType === 'DEVIS' ? 'dev' : 'fac'),
-        docType, number, clientId: payload.clientId, status: payload.finalize ? 'EN_ATTENTE' : 'DRAFT',
-        issueDate: payload.issueDate || today, dueDate: payload.dueDate || today,
-        currency: payload.currency || 'DZD', exchangeRate: rate, ...calc,
-        notes: payload.notes || '', publicToken: uid('pub'), sentAt: '', viewedAt: '', createdAt: today
+        docType, number,
+        clientId: payload.clientId || '',
+        clientName: payload.clientName || '',
+        status: payload.finalize ? 'EN_ATTENTE' : 'DRAFT',
+        issueDate: payload.issueDate || today,
+        dueDate: payload.dueDate || today,
+        currency: payload.currency || 'DZD',
+        exchangeRate: rate,
+        ...calc,
+        notes: payload.notes || '',
+        publicToken: uid('pub'),
+        sentAt: '', viewedAt: '', createdAt: today
       };
       db.invoices.unshift(inv);
       saveDb(db);
@@ -517,15 +458,31 @@ export async function runDemoAction(action, payload = {}, currentUser = null) {
     }
     case 'deleteInvoice':
       db.invoices = db.invoices.filter((i) => i.id !== payload.id);
+      // Cascade-delete linked payments so Dashboard & Treasury recalculate immediately
+      db.payments = db.payments.filter((p) => p.invoiceId !== payload.id);
       saveDb(db);
       return { deleted: true };
     case 'recordPayment': {
       const inv = db.invoices.find((i) => i.id === payload.invoiceId);
-      const amount = Number(payload.amount || 0);
-      const rate = Number(inv?.exchangeRate || 1);
-      const pay = { id: uid('pay'), invoiceId: inv.id, clientId: inv.clientId, amount, currency: inv.currency, exchangeRate: rate, amountDzd: amount * rate, method: payload.method || 'VIREMENT', paymentDate: payload.paymentDate || today, reference: payload.reference || '', status: 'APPROVED', notes: payload.notes || '' };
+      if (!inv) throw new Error('Invoice not found');
+      const amount = round2(payload.amount || 0);
+      const rate = Number(inv.exchangeRate || 1) || 1;
+      const pay = {
+        id: uid('pay'),
+        invoiceId: inv.id,
+        clientId: inv.clientId,
+        amount,
+        currency: inv.currency,
+        exchangeRate: rate,
+        amountDzd: round2(amount * rate),
+        method: payload.method || 'VIREMENT',
+        paymentDate: payload.paymentDate || today,
+        reference: payload.reference || '',
+        status: 'APPROVED',
+        notes: payload.notes || ''
+      };
       db.payments.push(pay);
-      const totalPaid = db.payments.filter((p) => p.invoiceId === inv.id).reduce((s, p) => s + Number(p.amount), 0);
+      const totalPaid = round2(db.payments.filter((p) => p.invoiceId === inv.id && p.status !== 'REJECTED').reduce((s, p) => s + Number(p.amount), 0));
       if (totalPaid >= Number(inv.total) - 0.01) inv.status = 'PAYEE';
       saveDb(db);
       return { payment: pay };
@@ -550,9 +507,9 @@ export async function runDemoAction(action, payload = {}, currentUser = null) {
     case 'listExpenses':
       return { expenses: db.expenses, budgets: db.budgets, categories: ['SALAIRES', 'LOYER', 'ADS', 'ABONNEMENTS', 'MATERIEL', 'IMPOTS', 'TRANSPORT', 'AUTRE'] };
     case 'saveExpense': {
-      const rate = Number(payload.exchangeRate || (payload.currency === 'EUR' ? db.settings.eurRate : payload.currency === 'USD' ? db.settings.usdRate : 1));
-      const amount = Number(payload.amount || 0);
-      const exp = { id: payload.id || uid('exp'), ...payload, amount, exchangeRate: rate, amountDzd: amount * rate, receiptUrl: payload.receiptUrl || (payload.receiptFileName ? `#demo-receipt-${payload.receiptFileName}` : '') };
+      const rate = Number(payload.exchangeRate || (payload.currency === 'EUR' ? db.settings.eurRate : payload.currency === 'USD' ? db.settings.usdRate : 1)) || 1;
+      const amount = round2(payload.amount || 0);
+      const exp = { id: payload.id || uid('exp'), ...payload, amount, exchangeRate: rate, amountDzd: round2(amount * rate), receiptUrl: payload.receiptUrl || (payload.receiptFileName ? `#demo-receipt-${payload.receiptFileName}` : '') };
       if (payload.id) db.expenses = db.expenses.map((e) => (e.id === payload.id ? exp : e));
       else db.expenses.unshift(exp);
       saveDb(db);
@@ -589,9 +546,9 @@ export async function runDemoAction(action, payload = {}, currentUser = null) {
       saveDb(db);
       return { deleted: true };
     case 'saveSupplierBill': {
-      const rate = Number(payload.exchangeRate || 1);
-      const amount = Number(payload.amount || 0);
-      const b = { id: payload.id || uid('bill'), status: 'A_PAYER', ...payload, amount, exchangeRate: rate, amountDzd: amount * rate };
+      const rate = Number(payload.exchangeRate || 1) || 1;
+      const amount = round2(payload.amount || 0);
+      const b = { id: payload.id || uid('bill'), status: 'A_PAYER', ...payload, amount, exchangeRate: rate, amountDzd: round2(amount * rate) };
       if (payload.id) db.supplierBills = db.supplierBills.map((x) => (x.id === payload.id ? b : x));
       else db.supplierBills.unshift(b);
       saveDb(db);
@@ -666,12 +623,13 @@ export async function runDemoAction(action, payload = {}, currentUser = null) {
       return { deleted: true };
     case 'getClientDetail': {
       const client = db.clients.find((c) => c.id === payload.id);
+      if (!client) throw new Error('Client not found');
       const invoices = db.invoices.filter((i) => i.clientId === client.id).map((i) => enrichInv(i, db));
       const financials = {
-        totalInvoiced: invoices.filter((i) => i.docType === 'FACTURE' && !['DRAFT', 'ANNULEE'].includes(i.status)).reduce((s, i) => s + i.totalDzd, 0),
-        totalPaid: invoices.reduce((s, i) => s + i.paidDzd, 0),
-        totalRemaining: invoices.filter((i) => i.docType === 'FACTURE').reduce((s, i) => s + i.remainingDzd, 0),
-        totalOverdue: invoices.filter((i) => i.isOverdue).reduce((s, i) => s + i.remainingDzd, 0)
+        totalInvoiced: round2(invoices.filter((i) => i.docType === 'FACTURE' && !['DRAFT', 'ANNULEE'].includes(i.status)).reduce((s, i) => s + i.totalDzd, 0)),
+        totalPaid: round2(invoices.reduce((s, i) => s + i.paidDzd, 0)),
+        totalRemaining: round2(invoices.filter((i) => i.docType === 'FACTURE' && !['DRAFT', 'ANNULEE'].includes(i.status)).reduce((s, i) => s + i.remainingDzd, 0)),
+        totalOverdue: round2(invoices.filter((i) => i.isOverdue).reduce((s, i) => s + i.remainingDzd, 0))
       };
       return {
         client,
@@ -686,9 +644,9 @@ export async function runDemoAction(action, payload = {}, currentUser = null) {
       return { services: db.services };
     case 'saveService': {
       const charges = payload.charges || [];
-      const totalCharges = charges.reduce((s, c) => s + Number(c.amount || 0), 0);
-      const salePrice = Number(payload.salePrice || 0);
-      const srv = { id: payload.id || uid('srv'), ...payload, charges, totalCharges, netProfit: salePrice - totalCharges };
+      const totalCharges = round2(charges.reduce((s, c) => s + Number(c.amount || 0), 0));
+      const salePrice = round2(payload.salePrice || 0);
+      const srv = { id: payload.id || uid('srv'), ...payload, charges, totalCharges, netProfit: round2(salePrice - totalCharges) };
       if (payload.id) db.services = db.services.map((x) => (x.id === payload.id ? srv : x));
       else db.services.push(srv);
       saveDb(db);
@@ -706,9 +664,9 @@ export async function runDemoAction(action, payload = {}, currentUser = null) {
           return {
             ...r,
             clientName: db.clients.find((c) => c.id === r.clientId)?.company || '',
-            agencyMargin: bl - sp,
-            roas: sp > 0 ? Math.round((rev / sp) * 100) / 100 : 0,
-            cpa: ord > 0 ? Math.round((sp / ord) * 100) / 100 : 0
+            agencyMargin: round2(bl - sp),
+            roas: sp > 0 ? round2(rev / sp) : 0,
+            cpa: ord > 0 ? round2(sp / ord) : 0
           };
         })
       };
@@ -731,8 +689,8 @@ export async function runDemoAction(action, payload = {}, currentUser = null) {
           return {
             ...t,
             clientName: db.clients.find((c) => c.id === t.clientId)?.company || '',
-            actualCpa: ord > 0 ? Math.round((sp / ord) * 100) / 100 : 0,
-            actualRoas: sp > 0 ? Math.round((rev / sp) * 100) / 100 : 0
+            actualCpa: ord > 0 ? round2(sp / ord) : 0,
+            actualRoas: sp > 0 ? round2(rev / sp) : 0
           };
         })
       };
@@ -820,25 +778,26 @@ export async function runDemoAction(action, payload = {}, currentUser = null) {
       const client = action === 'publicPortal'
         ? db.clients.find((c) => c.portalToken === payload.token) || db.clients[0]
         : db.clients.find((c) => c.id === payload.clientId) || db.clients[0];
+      if (!client) return null;
       const ym = payload.month || today.slice(0, 7);
       const invoices = db.invoices.filter((i) => i.clientId === client.id && i.status !== 'DRAFT' && i.status !== 'ANNULEE').map((i) => enrichInv(i, db));
       const adSpend = db.adSpend.filter((a) => a.clientId === client.id && a.month === ym).map((r) => ({
         ...r,
-        roas: Number(r.actualSpend) > 0 ? Math.round((Number(r.revenueGenerated) / Number(r.actualSpend)) * 100) / 100 : 0,
-        cpa: Number(r.orders) > 0 ? Math.round((Number(r.actualSpend) / Number(r.orders)) * 100) / 100 : 0,
-        agencyMargin: Number(r.amountBilled) - Number(r.actualSpend)
+        roas: Number(r.actualSpend) > 0 ? round2(Number(r.revenueGenerated) / Number(r.actualSpend)) : 0,
+        cpa: Number(r.orders) > 0 ? round2(Number(r.actualSpend) / Number(r.orders)) : 0,
+        agencyMargin: round2(Number(r.amountBilled) - Number(r.actualSpend))
       }));
       const adTotals = adSpend.reduce((a, r) => ({ budget: a.budget + Number(r.clientAdBudget), spend: a.spend + Number(r.actualSpend), billed: a.billed + Number(r.amountBilled), orders: a.orders + Number(r.orders), revenue: a.revenue + Number(r.revenueGenerated) }), { budget: 0, spend: 0, billed: 0, orders: 0, revenue: 0 });
-      adTotals.roas = adTotals.spend > 0 ? Math.round((adTotals.revenue / adTotals.spend) * 100) / 100 : 0;
-      adTotals.cpa = adTotals.orders > 0 ? Math.round((adTotals.spend / adTotals.orders) * 100) / 100 : 0;
+      adTotals.roas = adTotals.spend > 0 ? round2(adTotals.revenue / adTotals.spend) : 0;
+      adTotals.cpa = adTotals.orders > 0 ? round2(adTotals.spend / adTotals.orders) : 0;
 
       const report = {
         client,
         month: ym,
         financials: {
-          monthInvoiced: invoices.filter((i) => i.issueDate.startsWith(ym)).reduce((s, i) => s + i.totalDzd, 0),
-          monthPaid: db.payments.filter((p) => p.clientId === client.id && p.paymentDate.startsWith(ym)).reduce((s, p) => s + Number(p.amountDzd), 0),
-          totalOutstanding: invoices.filter((i) => i.docType === 'FACTURE').reduce((s, i) => s + i.remainingDzd, 0)
+          monthInvoiced: round2(invoices.filter((i) => i.issueDate.startsWith(ym)).reduce((s, i) => s + i.totalDzd, 0)),
+          monthPaid: round2(db.payments.filter((p) => p.clientId === client.id && p.paymentDate.startsWith(ym)).reduce((s, p) => s + Number(p.amountDzd), 0)),
+          totalOutstanding: round2(invoices.filter((i) => i.docType === 'FACTURE').reduce((s, i) => s + i.remainingDzd, 0))
         },
         invoices,
         adSpend,
@@ -846,8 +805,8 @@ export async function runDemoAction(action, payload = {}, currentUser = null) {
         deliveredTasks: db.tasks.filter((t) => t.clientId === client.id && t.status === 'DONE'),
         testili: db.testili.filter((t) => t.clientId === client.id).map((t) => ({
           ...t,
-          actualRoas: Number(t.amountSpent) > 0 ? Math.round((Number(t.revenue) / Number(t.amountSpent)) * 100) / 100 : 0,
-          actualCpa: Number(t.orders) > 0 ? Math.round((Number(t.amountSpent) / Number(t.orders)) * 100) / 100 : 0
+          actualRoas: Number(t.amountSpent) > 0 ? round2(Number(t.revenue) / Number(t.amountSpent)) : 0,
+          actualCpa: Number(t.orders) > 0 ? round2(Number(t.amountSpent) / Number(t.orders)) : 0
         }))
       };
       return action === 'publicPortal' ? { agency: db.settings, report } : report;
@@ -873,7 +832,7 @@ export async function runDemoAction(action, payload = {}, currentUser = null) {
     case 'listBackups':
       return { backups: db.backups };
     case 'archiveYear':
-      return { year: payload.year, archiveUrl: '#', archivedCounts: { Invoices: 1, Expenses: 2, Tasks: 1 }, newOpeningTreasuryBalance: db.settings.openingTreasuryBalance };
+      return { year: payload.year, archiveUrl: '#', archivedCounts: { Invoices: 0, Expenses: 0, Tasks: 0 }, newOpeningTreasuryBalance: db.settings.openingTreasuryBalance };
 
     default:
       return {};

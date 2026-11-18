@@ -10,7 +10,25 @@ import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import { buildWhatsAppUrl, exportToCsv, formatMoney, STATUS_COLORS, todayIso } from '../lib/format';
 import { downloadInvoicePdf } from '../lib/pdf';
+import StatCard from '../components/StatCard';
 import Modal from '../components/Modal';
+
+function makeDefaultForm(docType = 'FACTURE', clientId = '', defaultTaxRate = 19) {
+  return {
+    docType,
+    clientId,
+    clientName: '',
+    currency: 'DZD',
+    exchangeRate: 1,
+    issueDate: todayIso(),
+    dueDate: new Date(Date.now() + 15 * 86400000).toISOString().slice(0, 10),
+    discount: 0,
+    notes: '',
+    finalize: true,
+    markPaid: false,
+    items: [{ description: '', quantity: 1, unitPrice: 0, taxRate: Number(defaultTaxRate ?? 19) }]
+  };
+}
 
 export default function Invoices() {
   const { t } = useLanguage();
@@ -25,31 +43,41 @@ export default function Invoices() {
   const [recOpen, setRecOpen] = useState(false);
   const [recForm, setRecForm] = useState({ clientId: '', title: 'Retainer Mensuel', frequency: 'MONTHLY', currency: 'DZD', nextRunAt: todayIso(), unitPrice: '', description: 'Gestion Ads Mensuel' });
 
-  const [form, setForm] = useState({
-    docType: 'FACTURE',
-    clientId: '',
-    currency: 'DZD',
-    exchangeRate: 1,
-    issueDate: todayIso(),
-    dueDate: new Date(Date.now() + 15 * 86400000).toISOString().slice(0, 10),
-    discount: 0,
-    notes: '',
-    finalize: true,
-    items: [{ description: '', quantity: 1, unitPrice: 0, taxRate: 19 }]
-  });
+  const [form, setForm] = useState(() => makeDefaultForm('FACTURE', '', settings?.defaultTaxRate ?? 19));
 
   const { data } = useQuery({ queryKey: ['invoices'], queryFn: () => gasCall('listInvoices') });
   const { data: clientsRes } = useQuery({ queryKey: ['clients'], queryFn: () => gasCall('listClients') });
   const { data: servicesRes } = useQuery({ queryKey: ['services'], queryFn: () => gasCall('listServices') });
 
-  const invoices = (data?.invoices || []).filter((i) => i.docType === tab);
+  const allInvoices = data?.invoices || [];
+  const invoices = allInvoices.filter((i) => i.docType === tab);
   const recurring = data?.recurring || [];
   const clients = clientsRes?.clients || [];
   const services = servicesRes?.services || [];
 
+  const invalidateFinancials = () => {
+    qc.invalidateQueries({ queryKey: ['invoices'] });
+    qc.invalidateQueries({ queryKey: ['dashboard'] });
+    qc.invalidateQueries({ queryKey: ['benefits'] });
+    qc.invalidateQueries({ queryKey: ['client-detail'] });
+  };
+
+  // Live summary totals for current tab (Factures / Devis)
+  const activeDocs = invoices.filter((i) => i.status !== 'ANNULEE');
+  const sumTotalDzd = activeDocs.reduce((s, i) => s + Number(i.totalDzd || 0), 0);
+  const sumPaidDzd = activeDocs.reduce((s, i) => s + Number(i.paidDzd || 0), 0);
+  const sumRemainingDzd = activeDocs.reduce((s, i) => s + Number(i.remainingDzd || 0), 0);
+
   const handleCurrencyChange = (currency) => {
     const rate = currency === 'EUR' ? (settings.eurRate || 245) : currency === 'USD' ? (settings.usdRate || 225) : 1;
     setForm((p) => ({ ...p, currency, exchangeRate: rate }));
+  };
+
+  const updateItem = (idx, patch) => {
+    setForm((p) => ({
+      ...p,
+      items: p.items.map((item, i) => (i === idx ? { ...item, ...patch } : item))
+    }));
   };
 
   const addServiceToItems = (srvId) => {
@@ -57,23 +85,39 @@ export default function Invoices() {
     if (!srv) return;
     setForm((p) => ({
       ...p,
-      items: [...p.items.filter((i) => i.description), { description: srv.name, quantity: 1, unitPrice: Number(srv.salePrice), taxRate: Number(settings.defaultTaxRate ?? 19) }]
+      items: [
+        ...p.items.filter((i) => i.description.trim() !== ''),
+        { description: srv.name, quantity: 1, unitPrice: Number(srv.salePrice), taxRate: Number(settings.defaultTaxRate ?? 19) }
+      ]
     }));
   };
 
   const handleCreate = async (e) => {
     e.preventDefault();
     try {
-      await gasCall('saveInvoice', {
+      const res = await gasCall('saveInvoice', {
         ...form,
-        clientId: form.clientId || clients[0]?.id,
+        clientId: form.clientId || clients[0]?.id || '',
         discount: Number(form.discount || 0),
-        exchangeRate: Number(form.exchangeRate || 1)
+        exchangeRate: Number(form.exchangeRate || 1),
+        finalize: form.finalize || form.markPaid
       });
-      toast.success('Document créé avec succès');
+
+      // Optionally mark immediately paid on creation so Cash Received & Treasury update in 1 click
+      if (form.markPaid && form.docType === 'FACTURE' && res?.invoice?.id && Number(res.invoice.total) > 0) {
+        await gasCall('recordPayment', {
+          invoiceId: res.invoice.id,
+          amount: Number(res.invoice.total),
+          method: 'ESPECES',
+          paymentDate: form.issueDate || todayIso(),
+          reference: 'PAID-ON-CREATE'
+        });
+      }
+
+      toast.success('تم إنشاء المستند وتحديث الحسابات ✓');
       setCreateOpen(false);
-      qc.invalidateQueries({ queryKey: ['invoices'] });
-      qc.invalidateQueries({ queryKey: ['dashboard'] });
+      setForm(makeDefaultForm(tab === 'DEVIS' ? 'DEVIS' : 'FACTURE', clients[0]?.id || '', settings?.defaultTaxRate ?? 19));
+      invalidateFinancials();
     } catch (err) {
       toast.error(err.message);
     }
@@ -89,10 +133,20 @@ export default function Invoices() {
         paymentDate: payForm.paymentDate,
         reference: payForm.reference
       });
-      toast.success('Paiement enregistré ✓');
+      toast.success('تم تسجيل الدفعة وتحديث الخزينة ✓');
       setPayModal(null);
-      qc.invalidateQueries({ queryKey: ['invoices'] });
-      qc.invalidateQueries({ queryKey: ['dashboard'] });
+      invalidateFinancials();
+    } catch (err) {
+      toast.error(err.message);
+    }
+  };
+
+  const handleDeleteInvoice = async (id) => {
+    if (!confirm(t('common.confirmDelete'))) return;
+    try {
+      await gasCall('deleteInvoice', { id });
+      toast.success('تم حذف الفاتورة وإعادة حساب كل الأرقام ✓');
+      invalidateFinancials();
     } catch (err) {
       toast.error(err.message);
     }
@@ -101,7 +155,7 @@ export default function Invoices() {
   const handleSaveRecurring = async (e) => {
     e.preventDefault();
     await gasCall('saveRecurring', {
-      clientId: recForm.clientId || clients[0]?.id,
+      clientId: recForm.clientId || clients[0]?.id || '',
       title: recForm.title,
       frequency: recForm.frequency,
       currency: recForm.currency,
@@ -110,7 +164,7 @@ export default function Invoices() {
     });
     toast.success('Abonnement récurrent enregistré');
     setRecOpen(false);
-    qc.invalidateQueries({ queryKey: ['invoices'] });
+    invalidateFinancials();
   };
 
   const handleExportCsv = () => {
@@ -142,6 +196,7 @@ export default function Invoices() {
     },
     { sub: 0, tax: 0 }
   );
+  const previewTotal = Math.max(0, computedPreview.sub - Number(form.discount || 0) + computedPreview.tax);
 
   return (
     <div className="space-y-5">
@@ -160,7 +215,7 @@ export default function Invoices() {
           <button
             type="button"
             onClick={() => {
-              setForm((p) => ({ ...p, docType: tab === 'DEVIS' ? 'DEVIS' : 'FACTURE', clientId: clients[0]?.id || '' }));
+              setForm(makeDefaultForm(tab === 'DEVIS' ? 'DEVIS' : 'FACTURE', clients[0]?.id || '', settings?.defaultTaxRate ?? 19));
               setCreateOpen(true);
             }}
             className="btn-primary text-xs"
@@ -170,11 +225,20 @@ export default function Invoices() {
         </div>
       </div>
 
+      {/* Live Totals Strip */}
+      {tab !== 'RECURRING' && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <StatCard title={tab === 'DEVIS' ? 'إجمالي عروض الأسعار' : 'إجمالي الفواتير (DZD)'} value={formatMoney(sumTotalDzd)} subtitle={`${activeDocs.length} مستند`} tone="sky" />
+          <StatCard title="المحصّل (الكاش DZD)" value={formatMoney(sumPaidDzd)} tone="emerald" />
+          <StatCard title="المتبقي للتحصيل (DZD)" value={formatMoney(sumRemainingDzd)} tone="amber" />
+        </div>
+      )}
+
       {/* Tabs */}
       <div className="flex gap-2">
         {[
-          { key: 'FACTURE', label: 'الفواتير (Factures)' },
-          { key: 'DEVIS', label: 'عروض الأسعار (Devis)' },
+          { key: 'FACTURE', label: `الفواتير (${allInvoices.filter((i) => i.docType === 'FACTURE').length})` },
+          { key: 'DEVIS', label: `عروض الأسعار (${allInvoices.filter((i) => i.docType === 'DEVIS').length})` },
           { key: 'RECURRING', label: `الفواتير الدورية (${recurring.length})` }
         ].map((tb) => (
           <button
@@ -201,14 +265,14 @@ export default function Invoices() {
                 {recurring.map((r) => (
                   <tr key={r.id}>
                     <td className="font-bold">{r.title}</td>
-                    <td>{r.clientName}</td>
+                    <td>{r.clientName || '-'}</td>
                     <td><span className="px-2 py-0.5 rounded-full text-xs font-bold bg-indigo-500/15 text-indigo-500">{r.frequency}</span></td>
                     <td>{r.nextRunAt}</td>
                     <td>{r.currency}</td>
                     <td>
                       <button
                         type="button"
-                        onClick={async () => { await gasCall('deleteRecurring', { id: r.id }); qc.invalidateQueries({ queryKey: ['invoices'] }); }}
+                        onClick={async () => { await gasCall('deleteRecurring', { id: r.id }); invalidateFinancials(); }}
                         className="text-rose-500 p-1 cursor-pointer"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -216,6 +280,9 @@ export default function Invoices() {
                     </td>
                   </tr>
                 ))}
+                {recurring.length === 0 && (
+                  <tr><td colSpan={6} className="text-center text-xs text-[var(--text-muted)] py-6">{t('common.noData')}</td></tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -242,7 +309,7 @@ export default function Invoices() {
                       <p className="font-extrabold">{inv.number || 'DRAFT'}</p>
                       {inv.viewedAt && <span className="text-[10px] text-emerald-500 font-bold">👁 Viewed</span>}
                     </td>
-                    <td className="font-semibold">{inv.clientName}</td>
+                    <td className="font-semibold">{inv.clientName || '-'}</td>
                     <td className="text-xs">
                       <p>{inv.issueDate}</p>
                       <p className="text-[var(--text-muted)]">→ {inv.dueDate}</p>
@@ -263,7 +330,7 @@ export default function Invoices() {
                           <button
                             type="button"
                             title="Finalize"
-                            onClick={async () => { await gasCall('finalizeInvoice', { id: inv.id }); toast.success('Finalisé'); qc.invalidateQueries({ queryKey: ['invoices'] }); }}
+                            onClick={async () => { await gasCall('finalizeInvoice', { id: inv.id }); toast.success('Finalisé'); invalidateFinancials(); }}
                             className="p-1.5 rounded-lg bg-indigo-500/15 text-indigo-600 cursor-pointer"
                           >
                             <CheckCircle className="w-3.5 h-3.5" />
@@ -273,7 +340,7 @@ export default function Invoices() {
                           <button
                             type="button"
                             title="Convert to Invoice"
-                            onClick={async () => { await gasCall('convertQuoteToInvoice', { id: inv.id }); toast.success('Converti en Facture'); setTab('FACTURE'); qc.invalidateQueries({ queryKey: ['invoices'] }); }}
+                            onClick={async () => { await gasCall('convertQuoteToInvoice', { id: inv.id }); toast.success('Converti en Facture'); setTab('FACTURE'); invalidateFinancials(); }}
                             className="p-1.5 rounded-lg bg-sky-500/15 text-sky-600 cursor-pointer"
                           >
                             <ArrowRightLeft className="w-3.5 h-3.5" />
@@ -307,7 +374,7 @@ export default function Invoices() {
                             try {
                               await gasCall('sendInvoiceEmail', { id: inv.id, portalBaseUrl: window.location.origin });
                               toast.success('Email envoyé ✓');
-                              qc.invalidateQueries({ queryKey: ['invoices'] });
+                              invalidateFinancials();
                             } catch (e) { toast.error(e.message); }
                           }}
                           className="p-1.5 rounded-lg hover:bg-[var(--surface-subtle)] cursor-pointer"
@@ -325,7 +392,7 @@ export default function Invoices() {
                         </a>
                         <button
                           type="button"
-                          onClick={async () => { if (confirm(t('common.confirmDelete'))) { await gasCall('deleteInvoice', { id: inv.id }); qc.invalidateQueries({ queryKey: ['invoices'] }); } }}
+                          onClick={() => handleDeleteInvoice(inv.id)}
                           className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-500/10 cursor-pointer"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -334,6 +401,9 @@ export default function Invoices() {
                     </td>
                   </tr>
                 ))}
+                {invoices.length === 0 && (
+                  <tr><td colSpan={7} className="text-center text-xs text-[var(--text-muted)] py-8">{t('common.noData')}</td></tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -353,9 +423,19 @@ export default function Invoices() {
             </div>
             <div>
               <label className="block text-xs font-semibold mb-1">العميل</label>
-              <select required value={form.clientId} onChange={(e) => setForm({ ...form, clientId: e.target.value })} className="input-field">
-                {clients.map((c) => <option key={c.id} value={c.id}>{c.company || c.name}</option>)}
-              </select>
+              {clients.length > 0 ? (
+                <select value={form.clientId} onChange={(e) => setForm({ ...form, clientId: e.target.value })} className="input-field">
+                  {clients.map((c) => <option key={c.id} value={c.id}>{c.company || c.name}</option>)}
+                </select>
+              ) : (
+                <input
+                  required
+                  placeholder="اسم العميل (أو أضفه في صفحة العملاء)"
+                  value={form.clientName}
+                  onChange={(e) => setForm({ ...form, clientName: e.target.value })}
+                  className="input-field"
+                />
+              )}
             </div>
             <div>
               <label className="block text-xs font-semibold mb-1">العملة</label>
@@ -371,11 +451,12 @@ export default function Invoices() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div><label className="block text-xs font-semibold mb-1">تاريخ الإصدار</label><input type="date" value={form.issueDate} onChange={(e) => setForm({ ...form, issueDate: e.target.value })} className="input-field" /></div>
             <div><label className="block text-xs font-semibold mb-1">تاريخ الاستحقاق</label><input type="date" value={form.dueDate} onChange={(e) => setForm({ ...form, dueDate: e.target.value })} className="input-field" /></div>
+            <div><label className="block text-xs font-semibold mb-1">خصم / Remise</label><input type="number" min="0" value={form.discount} onChange={(e) => setForm({ ...form, discount: Number(e.target.value || 0) })} className="input-field" /></div>
             <div>
-              <label className="block text-xs font-semibold mb-1">إضافة سريعة من الخدمات</label>
+              <label className="block text-xs font-semibold mb-1">إضافة من الخدمات</label>
               <select onChange={(e) => { addServiceToItems(e.target.value); e.target.value = ''; }} className="input-field">
                 <option value="">+ اختر خدمة...</option>
                 {services.map((s) => <option key={s.id} value={s.id}>{s.name} ({formatMoney(s.salePrice)})</option>)}
@@ -389,7 +470,7 @@ export default function Invoices() {
               <span className="text-xs font-bold">البنود / Lignes</span>
               <button
                 type="button"
-                onClick={() => setForm((p) => ({ ...p, items: [...p.items, { description: '', quantity: 1, unitPrice: 0, taxRate: 19 }] }))}
+                onClick={() => setForm((p) => ({ ...p, items: [...p.items, { description: '', quantity: 1, unitPrice: 0, taxRate: Number(settings.defaultTaxRate ?? 19) }] }))}
                 className="text-xs font-bold text-indigo-500 cursor-pointer"
               >
                 + إضافة سطر
@@ -397,32 +478,38 @@ export default function Invoices() {
             </div>
             {form.items.map((it, idx) => (
               <div key={idx} className="grid grid-cols-12 gap-2 items-center">
-                <input required placeholder="الوصف" value={it.description} onChange={(e) => {
-                  const next = [...form.items]; next[idx].description = e.target.value; setForm({ ...form, items: next });
-                }} className="input-field col-span-5 text-xs" />
-                <input type="number" min="1" placeholder="الكمية" value={it.quantity} onChange={(e) => {
-                  const next = [...form.items]; next[idx].quantity = Number(e.target.value); setForm({ ...form, items: next });
-                }} className="input-field col-span-2 text-xs" />
-                <input type="number" placeholder="السعر" value={it.unitPrice} onChange={(e) => {
-                  const next = [...form.items]; next[idx].unitPrice = Number(e.target.value); setForm({ ...form, items: next });
-                }} className="input-field col-span-2 text-xs" />
-                <input type="number" placeholder="TVA%" value={it.taxRate} onChange={(e) => {
-                  const next = [...form.items]; next[idx].taxRate = Number(e.target.value); setForm({ ...form, items: next });
-                }} className="input-field col-span-2 text-xs" />
-                <button type="button" onClick={() => setForm((p) => ({ ...p, items: p.items.filter((_, i) => i !== idx) }))} className="col-span-1 text-rose-500 cursor-pointer">
+                <input required placeholder="الوصف" value={it.description} onChange={(e) => updateItem(idx, { description: e.target.value })} className="input-field col-span-5 text-xs" />
+                <input type="number" min="1" placeholder="الكمية" value={it.quantity} onChange={(e) => updateItem(idx, { quantity: Number(e.target.value || 1) })} className="input-field col-span-2 text-xs" />
+                <input type="number" min="0" step="0.01" placeholder="السعر" value={it.unitPrice} onChange={(e) => updateItem(idx, { unitPrice: Number(e.target.value || 0) })} className="input-field col-span-2 text-xs" />
+                <input type="number" min="0" placeholder="TVA%" value={it.taxRate} onChange={(e) => updateItem(idx, { taxRate: Number(e.target.value || 0) })} className="input-field col-span-2 text-xs" />
+                <button
+                  type="button"
+                  disabled={form.items.length === 1}
+                  onClick={() => setForm((p) => ({ ...p, items: p.items.filter((_, i) => i !== idx) }))}
+                  className="col-span-1 text-rose-500 disabled:opacity-30 cursor-pointer"
+                >
                   <Trash2 className="w-4 h-4 mx-auto" />
                 </button>
               </div>
             ))}
           </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-xl bg-[var(--surface-subtle)] text-xs">
-            <label className="flex items-center gap-2 font-semibold cursor-pointer">
-              <input type="checkbox" checked={form.finalize} onChange={(e) => setForm({ ...form, finalize: e.target.checked })} />
-              <span>إصدار رقم قانوني مباشرة (FAC/DEV)</span>
-            </label>
-            <div className="text-end font-extrabold text-sm">
-              Total TTC: {formatMoney(computedPreview.sub + computedPreview.tax - Number(form.discount || 0), form.currency)}
+          <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-xl bg-[var(--surface-subtle)] text-xs">
+            <div className="space-y-1.5">
+              <label className="flex items-center gap-2 font-semibold cursor-pointer">
+                <input type="checkbox" checked={form.finalize} onChange={(e) => setForm({ ...form, finalize: e.target.checked })} />
+                <span>إصدار رقم قانوني مباشرة (FAC/DEV)</span>
+              </label>
+              {form.docType === 'FACTURE' && (
+                <label className="flex items-center gap-2 font-semibold text-emerald-600 dark:text-emerald-400 cursor-pointer">
+                  <input type="checkbox" checked={form.markPaid} onChange={(e) => setForm({ ...form, markPaid: e.target.checked, finalize: e.target.checked ? true : form.finalize })} />
+                  <span>مدفوعة الآن (تُضاف مباشرة للخزينة والكاش)</span>
+                </label>
+              )}
+            </div>
+            <div className="text-end space-y-0.5">
+              <p className="text-[var(--text-muted)]">HT: {formatMoney(computedPreview.sub, form.currency)} | TVA: {formatMoney(computedPreview.tax, form.currency)}</p>
+              <p className="font-extrabold text-sm">Total TTC: {formatMoney(previewTotal, form.currency)}</p>
             </div>
           </div>
 
@@ -463,7 +550,7 @@ export default function Invoices() {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-semibold mb-1">العميل</label>
-              <select required value={recForm.clientId} onChange={(e) => setRecForm({ ...recForm, clientId: e.target.value })} className="input-field">
+              <select value={recForm.clientId} onChange={(e) => setRecForm({ ...recForm, clientId: e.target.value })} className="input-field">
                 {clients.map((c) => <option key={c.id} value={c.id}>{c.company || c.name}</option>)}
               </select>
             </div>

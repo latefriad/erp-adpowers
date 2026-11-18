@@ -67,7 +67,9 @@ export default function ClientReports() {
         </div>
       </div>
 
-      {isLoading || !report ? (
+      {clients.length === 0 ? (
+        <div className="card p-10 text-center text-sm text-[var(--text-muted)]">أضف عميلاً أولاً من صفحة العملاء لعرض التقارير الشهرية.</div>
+      ) : isLoading || !report ? (
         <div className="p-10 text-center text-[var(--text-muted)]">...</div>
       ) : (
         <div className="space-y-5">

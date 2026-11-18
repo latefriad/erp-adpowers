@@ -969,6 +969,23 @@ function handleConvertQuoteToInvoice_(user, payload) {
   });
 }
 
+function handleDeleteInvoice_(user, payload) {
+  requireRole_(user, ['ADMIN', 'ACCOUNTANT']);
+  const id = String(payload.id || '');
+  if (!id) throw new Error('Invoice id required');
+
+  // Cascade-delete any payments linked to this invoice so Treasury & Cash Received stay exact
+  const payments = dbGetAll_('Payments', true);
+  payments.forEach(function(p) {
+    if (String(p.invoiceId) === id) {
+      dbDelete_('Payments', p.id);
+    }
+  });
+
+  const deleted = dbDelete_('Invoices', id);
+  return { deleted: deleted };
+}
+
 function handleRecordPayment_(user, payload) {
   requireRole_(user, ['ADMIN', 'ACCOUNTANT']);
   const inv = dbGetById_('Invoices', payload.invoiceId);
@@ -1482,10 +1499,14 @@ function handleGetDashboard_(user, payload) {
 
   const invoices = invoicesRaw.map(function(i) { return enrichInvoice_(i, paysByInv, clientMap); });
 
-  // Period bounds (default current month)
+  // Period bounds (default current month, timezone-safe YYYY-MM-DD)
   const now = new Date();
-  const defaultStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
-  const defaultEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10);
+  const y = now.getFullYear();
+  const m = now.getMonth() + 1;
+  const lastDay = new Date(y, m, 0).getDate();
+  const mm = ('0' + m).slice(-2);
+  const defaultStart = y + '-' + mm + '-01';
+  const defaultEnd = y + '-' + mm + '-' + ('0' + lastDay).slice(-2);
   const startDate = payload.startDate || defaultStart;
   const endDate = payload.endDate || defaultEnd;
 
@@ -3033,8 +3054,7 @@ function doPost(e) {
         data = handleConvertQuoteToInvoice_(user, payload);
         break;
       case 'deleteInvoice':
-        requireRole_(user, ['ADMIN', 'ACCOUNTANT']);
-        data = { deleted: dbDelete_('Invoices', payload.id) };
+        data = handleDeleteInvoice_(user, payload);
         break;
       case 'recordPayment':
         data = handleRecordPayment_(user, payload);

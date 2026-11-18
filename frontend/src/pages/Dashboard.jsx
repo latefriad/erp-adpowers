@@ -8,7 +8,7 @@ import toast from 'react-hot-toast';
 import { gasCall } from '../lib/api';
 import { useLanguage } from '../context/LanguageContext';
 import { useAuth } from '../context/AuthContext';
-import { buildWhatsAppUrl, currentYearMonth, exportToCsv, formatMoney, STATUS_COLORS } from '../lib/format';
+import { buildWhatsAppUrl, currentYearMonth, exportToCsv, formatLocalYmd, formatMoney, STATUS_COLORS } from '../lib/format';
 import StatCard from '../components/StatCard';
 import { MultiBarChart, ProgressBar } from '../components/Charts';
 import Modal from '../components/Modal';
@@ -20,20 +20,19 @@ function getPeriodDates(preset) {
   if (preset === 'quarter') {
     const qStart = Math.floor(m / 3) * 3;
     return {
-      startDate: new Date(y, qStart, 1).toISOString().slice(0, 10),
-      endDate: new Date(y, qStart + 3, 0).toISOString().slice(0, 10)
+      startDate: formatLocalYmd(y, qStart, 1),
+      endDate: formatLocalYmd(y, qStart + 3, 0)
     };
   }
   if (preset === 'year') {
     return { startDate: `${y}-01-01`, endDate: `${y}-12-31` };
   }
   if (preset === 'last12') {
-    const start = new Date(y, m - 11, 1);
-    return { startDate: start.toISOString().slice(0, 10), endDate: new Date(y, m + 1, 0).toISOString().slice(0, 10) };
+    return { startDate: formatLocalYmd(y, m - 11, 1), endDate: formatLocalYmd(y, m + 1, 0) };
   }
   return {
-    startDate: new Date(y, m, 1).toISOString().slice(0, 10),
-    endDate: new Date(y, m + 1, 0).toISOString().slice(0, 10)
+    startDate: formatLocalYmd(y, m, 1),
+    endDate: formatLocalYmd(y, m + 1, 0)
   };
 }
 

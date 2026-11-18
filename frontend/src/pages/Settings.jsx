@@ -278,6 +278,21 @@ export default function Settings() {
                 {archiving ? 'جاري الأرشفة...' : `أرشفة سنة ${archiveYear}`}
               </button>
             </div>
+            <div className="pt-4 border-t border-[var(--border-subtle)] flex items-center justify-between gap-2">
+              <span className="text-xs text-[var(--text-muted)]">تصفير كل البيانات التجريبية والبدء من 0</span>
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!confirm('هل تريد تصفير كل الأرقام والجداول المحلية إلى 0؟')) return;
+                  await gasCall('resetAllData');
+                  qc.invalidateQueries();
+                  toast.success('تم تصفير كل الأرقام إلى 0 ✓');
+                }}
+                className="btn-secondary text-xs text-rose-500 font-bold"
+              >
+                Reset All to 0
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -162,8 +162,7 @@ function doPost(e) {
         data = handleConvertQuoteToInvoice_(user, payload);
         break;
       case 'deleteInvoice':
-        requireRole_(user, ['ADMIN', 'ACCOUNTANT']);
-        data = { deleted: dbDelete_('Invoices', payload.id) };
+        data = handleDeleteInvoice_(user, payload);
         break;
       case 'recordPayment':
         data = handleRecordPayment_(user, payload);

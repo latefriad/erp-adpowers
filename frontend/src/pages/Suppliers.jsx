@@ -34,6 +34,7 @@ export default function Suppliers() {
     toast.success('Facture fournisseur enregistrée');
     setBillModal(false);
     qc.invalidateQueries({ queryKey: ['suppliers'] });
+    qc.invalidateQueries({ queryKey: ['dashboard'] });
   };
 
   const handlePayBill = async (id) => {
@@ -86,7 +87,7 @@ export default function Suppliers() {
                       )}
                       <button
                         type="button"
-                        onClick={async () => { await gasCall('deleteSupplierBill', { id: b.id }); qc.invalidateQueries({ queryKey: ['suppliers'] }); }}
+                        onClick={async () => { await gasCall('deleteSupplierBill', { id: b.id }); qc.invalidateQueries({ queryKey: ['suppliers'] }); qc.invalidateQueries({ queryKey: ['dashboard'] }); }}
                         className="text-rose-500 p-1 cursor-pointer"
                       >
                         <Trash2 className="w-4 h-4" />

@@ -4,7 +4,7 @@ import { Wallet, Plus, Trash2, ArrowUpRight, ArrowDownRight, HandCoins } from 'l
 import toast from 'react-hot-toast';
 import { gasCall } from '../lib/api';
 import { useLanguage } from '../context/LanguageContext';
-import { formatMoney, todayIso } from '../lib/format';
+import { formatLocalYmd, formatMoney, todayIso } from '../lib/format';
 import StatCard from '../components/StatCard';
 import { MultiBarChart } from '../components/Charts';
 import Modal from '../components/Modal';
@@ -24,8 +24,8 @@ export default function Benefits() {
     if (range === 'year') return { startDate: `${y}-01-01`, endDate: `${y}-12-31` };
     if (range === 'all') return { startDate: '', endDate: '' };
     return {
-      startDate: new Date(y, m, 1).toISOString().slice(0, 10),
-      endDate: new Date(y, m + 1, 0).toISOString().slice(0, 10)
+      startDate: formatLocalYmd(y, m, 1),
+      endDate: formatLocalYmd(y, m + 1, 0)
     };
   })();
 
