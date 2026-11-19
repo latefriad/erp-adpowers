@@ -6,6 +6,8 @@
  * and body: JSON.stringify({ action: '...', token: '...', payload: { ... } })
  */
 
+const DEFAULT_SPREADSHEET_ID = '1XQRrR2CduOu1SS1CLW38Wncc7Ie3VB2KxE726P17ggo';
+
 function jsonResponse_(obj) {
   return ContentService
     .createTextOutput(JSON.stringify(obj))

@@ -6,9 +6,7 @@
 const DEFAULT_SPREADSHEET_ID = "1XQRrR2CduOu1SS1CLW38Wncc7Ie3VB2KxE726P17ggo";
 
 
-
 // -------------------- Setup.gs --------------------
-
 /**
  * ============================================================================
  * ADPOWRS DIGITAL ERP — ONE-CLICK DATABASE & INFRASTRUCTURE SETUP
@@ -242,7 +240,6 @@ function setupAdpowrsERP() {
 
 
 // -------------------- SheetsDB.gs --------------------
-
 /**
  * ============================================================================
  * ADPOWRS DIGITAL ERP — GOOGLE SHEETS DATABASE ENGINE + CACHING
@@ -255,12 +252,21 @@ function getDatabaseSpreadsheet_() {
   const props = PropertiesService.getScriptProperties();
   const savedId = props.getProperty('SPREADSHEET_ID');
   if (savedId) {
-    return SpreadsheetApp.openById(savedId);
+    try {
+      return SpreadsheetApp.openById(savedId);
+    } catch (e) {}
   }
   const active = SpreadsheetApp.getActiveSpreadsheet();
   if (active) {
     props.setProperty('SPREADSHEET_ID', active.getId());
     return active;
+  }
+  if (typeof DEFAULT_SPREADSHEET_ID !== 'undefined' && DEFAULT_SPREADSHEET_ID) {
+    try {
+      const ss = SpreadsheetApp.openById(DEFAULT_SPREADSHEET_ID);
+      props.setProperty('SPREADSHEET_ID', DEFAULT_SPREADSHEET_ID);
+      return ss;
+    } catch (e) {}
   }
   throw new Error('SPREADSHEET_ID not configured. Bind script to a Google Sheet or set SPREADSHEET_ID in Script Properties.');
 }
@@ -486,7 +492,6 @@ function round2_(n) {
 
 
 // -------------------- Auth.gs --------------------
-
 /**
  * ============================================================================
  * ADPOWRS DIGITAL ERP — AUTHENTICATION & 4-ROLE RBAC
@@ -698,7 +703,6 @@ function handleUpdateUser_(user, payload) {
 
 
 // -------------------- Finance.gs --------------------
-
 /**
  * ============================================================================
  * ADPOWRS DIGITAL ERP — FINANCE, BILLING, EXPENSES, SUPPLIERS & BENEFITS
@@ -1843,7 +1847,6 @@ function handleGetDashboard_(user, payload) {
 
 
 // -------------------- CrmOps.gs --------------------
-
 /**
  * ============================================================================
  * ADPOWRS DIGITAL ERP — CRM, CLIENTS 360°, MEDIA BUYING, TESTILI, TASKS, PORTAL
@@ -2613,7 +2616,6 @@ function handleGlobalSearch_(user, payload) {
 
 
 // -------------------- DriveBackup.gs --------------------
-
 /**
  * ============================================================================
  * ADPOWRS DIGITAL ERP — GOOGLE DRIVE FILES, AUTO-BACKUP & YEARLY ARCHIVE
@@ -2869,7 +2871,6 @@ function handleArchiveYear_(user, payload) {
 
 
 // -------------------- Triggers.gs --------------------
-
 /**
  * ============================================================================
  * ADPOWRS DIGITAL ERP — AUTOMATED TRIGGERS (RECURRING, REMINDERS, BACKUP)
@@ -3011,7 +3012,6 @@ function cronWeeklyDriveBackup() {
 
 
 // -------------------- Code.gs --------------------
-
 /**
  * ============================================================================
  * ADPOWRS DIGITAL ERP — MAIN GOOGLE APPS SCRIPT API ROUTER
@@ -3019,6 +3019,7 @@ function cronWeeklyDriveBackup() {
  * Frontend calls `POST <WEB_APP_URL>` with `Content-Type: text/plain;charset=utf-8`
  * and body: JSON.stringify({ action: '...', token: '...', payload: { ... } })
  */
+
 
 function jsonResponse_(obj) {
   return ContentService
@@ -3348,3 +3349,4 @@ function doPost(e) {
     return jsonResponse_({ ok: false, code: code, error: msg });
   }
 }
+

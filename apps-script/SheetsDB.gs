@@ -10,12 +10,21 @@ function getDatabaseSpreadsheet_() {
   const props = PropertiesService.getScriptProperties();
   const savedId = props.getProperty('SPREADSHEET_ID');
   if (savedId) {
-    return SpreadsheetApp.openById(savedId);
+    try {
+      return SpreadsheetApp.openById(savedId);
+    } catch (e) {}
   }
   const active = SpreadsheetApp.getActiveSpreadsheet();
   if (active) {
     props.setProperty('SPREADSHEET_ID', active.getId());
     return active;
+  }
+  if (typeof DEFAULT_SPREADSHEET_ID !== 'undefined' && DEFAULT_SPREADSHEET_ID) {
+    try {
+      const ss = SpreadsheetApp.openById(DEFAULT_SPREADSHEET_ID);
+      props.setProperty('SPREADSHEET_ID', DEFAULT_SPREADSHEET_ID);
+      return ss;
+    } catch (e) {}
   }
   throw new Error('SPREADSHEET_ID not configured. Bind script to a Google Sheet or set SPREADSHEET_ID in Script Properties.');
 }

@@ -2,13 +2,14 @@ import { runDemoAction } from './demoStore';
 
 const GAS_URL_KEY = 'adpowrs_gas_url';
 const TOKEN_KEY = 'adpowrs_token';
+export const DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbzDROGn93UYpmUsgQ0o8Q1Mo2j8L2Uep0jW5iYcOn3xUJUt8mAXyixjsFbcwvkwjdvfzg/exec';
 
 export function getGasApiUrl() {
   try {
     const custom = localStorage.getItem(GAS_URL_KEY);
     if (custom && custom.trim()) return custom.trim();
   } catch (e) {}
-  return (import.meta.env.VITE_GAS_API_URL || '').trim();
+  return (import.meta.env.VITE_GAS_API_URL || DEFAULT_GAS_URL).trim();
 }
 
 export function setGasApiUrl(url) {
@@ -183,6 +184,22 @@ export async function syncDataWithGoogleSheets() {
       for (const exp of localDb.expenses) {
         try {
           await gasCall('saveExpense', { ...exp, id: undefined });
+          pushedCount++;
+        } catch (e) {}
+      }
+    }
+    if (Array.isArray(localDb.suppliers) && localDb.suppliers.length > 0) {
+      for (const sup of localDb.suppliers) {
+        try {
+          await gasCall('saveSupplier', { ...sup, id: undefined });
+          pushedCount++;
+        } catch (e) {}
+      }
+    }
+    if (Array.isArray(localDb.supplierBills) && localDb.supplierBills.length > 0) {
+      for (const bill of localDb.supplierBills) {
+        try {
+          await gasCall('saveSupplierBill', { ...bill, id: undefined });
           pushedCount++;
         } catch (e) {}
       }
