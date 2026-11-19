@@ -142,21 +142,26 @@ export default function Dashboard() {
         <div>
           <p className="text-xs uppercase tracking-wider text-indigo-100 font-semibold">{t('dashboard.treasury')}</p>
           <p className="text-3xl lg:text-4xl font-extrabold mt-1">{formatMoney(data.treasuryBalance)}</p>
-          <p className="text-xs text-indigo-100 mt-1">
-            {t('dashboard.opening')}: {formatMoney(data.openingBalance)}
+          <p className="text-xs text-indigo-100 mt-1 font-medium">
+            حساب فوري: الفواتير ({formatMoney(kpis.totalBilled || data.totalInvoiced)}) - المصاريف ({formatMoney(kpis.totalExpenses)})
           </p>
         </div>
 
-        <div className="flex flex-wrap gap-4">
+        <div className="flex flex-wrap gap-3">
           <div className="bg-white/15 backdrop-blur-xs rounded-xl px-4 py-3 min-w-36">
-            <p className="text-[11px] text-indigo-100">{t('dashboard.mrr')}</p>
-            <p className="text-lg font-extrabold">{formatMoney(kpis.mrr)}</p>
-            <p className="text-[11px] text-indigo-100">{kpis.activeSubscriptions} actifs</p>
+            <p className="text-[11px] text-indigo-100 font-semibold">إجمالي الفواتير الصادرة</p>
+            <p className="text-lg font-extrabold">{formatMoney(kpis.totalBilled || data.totalInvoiced)}</p>
+            <p className="text-[11px] text-indigo-100">Factures Clients</p>
           </div>
           <div className="bg-white/15 backdrop-blur-xs rounded-xl px-4 py-3 min-w-36">
-            <p className="text-[11px] text-indigo-100">{t('dashboard.collectionRate')}</p>
-            <p className="text-lg font-extrabold">{kpis.collectionRate}%</p>
-            <p className="text-[11px] text-indigo-100">DSO: {kpis.dso} j</p>
+            <p className="text-[11px] text-indigo-100 font-semibold">إجمالي المصاريف</p>
+            <p className="text-lg font-extrabold">{formatMoney(kpis.totalExpenses)}</p>
+            <p className="text-[11px] text-indigo-100">{kpis.expenseCount} مصاريف مدفوعة</p>
+          </div>
+          <div className="bg-white/15 backdrop-blur-xs rounded-xl px-4 py-3 min-w-36">
+            <p className="text-[11px] text-indigo-100 font-semibold">صافي الأرباح (Bénéfice)</p>
+            <p className="text-lg font-extrabold">{formatMoney(kpis.netProfit)}</p>
+            <p className="text-[11px] text-indigo-100">هامش الربح: {kpis.profitMargin}%</p>
           </div>
         </div>
       </div>

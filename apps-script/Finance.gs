@@ -750,7 +750,9 @@ function handleGetBenefits_(user, payload) {
   clients.forEach(function(c) { clientMap[c.id] = c; });
 
   const merged = [];
+  const paidInvIds = {};
   payments.forEach(function(p) {
+    if (p.invoiceId) paidInvIds[p.invoiceId] = true;
     const inv = invMap[p.invoiceId];
     const cl = clientMap[p.clientId];
     merged.push({
@@ -764,6 +766,23 @@ function handleGetBenefits_(user, payload) {
       amountDzd: toNum_(p.amountDzd),
       notes: p.notes || ''
     });
+  });
+
+  invoices.forEach(function(i) {
+    if (i.docType === 'FACTURE' && i.status !== 'DRAFT' && i.status !== 'ANNULEE' && !paidInvIds[i.id]) {
+      const cl = clientMap[i.clientId];
+      merged.push({
+        id: 'inv_' + i.id,
+        source: 'FACTURE',
+        readOnly: true,
+        date: String(i.issueDate || i.createdAt).slice(0, 10),
+        type: 'REVENUE',
+        category: 'FACTURE_CLIENT',
+        description: (i.number ? i.number + ' — ' : '') + (cl ? (cl.company || cl.name) : (i.clientName || 'Client')),
+        amountDzd: toNum_(i.totalDzd || i.total),
+        notes: i.notes || ''
+      });
+    }
   });
 
   expenses.forEach(function(e) {
@@ -928,9 +947,17 @@ function handleGetDashboard_(user, payload) {
   const endDate = payload.endDate || defaultEnd;
 
   // 1. Real-Time Treasury (all-time)
-  const allCashIn = payments.reduce(function(s, p) { return s + toNum_(p.amountDzd); }, 0);
+  const validInvoices = invoices.filter(function(i) {
+    return i.docType === 'FACTURE' && i.status !== 'DRAFT' && i.status !== 'ANNULEE';
+  });
+  const allInvoicedTotal = validInvoices.reduce(function(s, i) { return s + toNum_(i.totalDzd); }, 0);
+  const allPaymentsTotal = payments.reduce(function(s, p) { return s + toNum_(p.amountDzd); }, 0);
+  const paidInvoicesTotal = validInvoices.reduce(function(s, i) {
+    return s + (i.status === 'PAYEE' ? toNum_(i.totalDzd) : toNum_(i.paidDzd || 0));
+  }, 0);
+  const effectiveCashIn = allPaymentsTotal > 0 ? allPaymentsTotal : (paidInvoicesTotal > 0 ? paidInvoicesTotal : allInvoicedTotal);
   const allExpenses = expenses.reduce(function(s, e) { return s + toNum_(e.amountDzd); }, 0);
-  const treasuryBalance = round2_(opening + allCashIn - allExpenses);
+  const treasuryBalance = round2_(opening + effectiveCashIn - allExpenses);
 
   // 2. Period KPIs
   const periodPayments = payments.filter(function(p) {
@@ -946,11 +973,13 @@ function handleGetDashboard_(user, payload) {
     return i.docType === 'FACTURE' && i.status !== 'DRAFT' && i.status !== 'ANNULEE' && d >= startDate && d <= endDate;
   });
 
-  const cashReceived = round2_(periodPayments.reduce(function(s, p) { return s + toNum_(p.amountDzd); }, 0));
+  const periodInvoiced = round2_(periodBilledInvoices.reduce(function(s, i) { return s + toNum_(i.totalDzd); }, 0));
+  const periodPaid = round2_(periodPayments.reduce(function(s, p) { return s + toNum_(p.amountDzd); }, 0));
+  const cashReceived = periodPaid > 0 ? periodPaid : (periodInvoiced > 0 ? periodInvoiced : allInvoicedTotal);
   const totalExpenses = round2_(periodExpenses.reduce(function(s, e) { return s + toNum_(e.amountDzd); }, 0));
   const netProfit = round2_(cashReceived - totalExpenses);
   const profitMargin = cashReceived > 0 ? round2_((netProfit / cashReceived) * 100) : 0;
-  const totalBilled = round2_(periodBilledInvoices.reduce(function(s, i) { return s + toNum_(i.totalDzd); }, 0));
+  const totalBilled = round2_(periodInvoiced > 0 ? periodInvoiced : allInvoicedTotal);
   const collectionRate = totalBilled > 0 ? round2_(Math.min(100, (cashReceived / totalBilled) * 100)) : 0;
 
   // Open & overdue receivables (all active invoices)
@@ -1105,6 +1134,7 @@ function handleGetDashboard_(user, payload) {
 
   return {
     treasuryBalance: treasuryBalance,
+    totalInvoiced: allInvoicedTotal,
     openingBalance: opening,
     kpis: {
       cashReceived: cashReceived,

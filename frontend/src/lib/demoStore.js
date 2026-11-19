@@ -250,10 +250,17 @@ export async function runDemoAction(action, payload = {}, currentUser = null) {
     case 'getDashboard': {
       const opening = Number(db.settings.openingTreasuryBalance || 0);
       const invoices = db.invoices.map((i) => enrichInv(i, db));
+      const validInvoices = invoices.filter((i) => i.docType === 'FACTURE' && !['DRAFT', 'ANNULEE'].includes(i.status));
+      const allInvoicedTotal = round2(validInvoices.reduce((s, i) => s + Number(i.totalDzd || 0), 0));
+
       const approvedPayments = db.payments.filter((p) => p.status !== 'REJECTED');
-      const allIn = round2(approvedPayments.reduce((s, p) => s + Number(p.amountDzd || 0), 0));
+      const allPaymentsTotal = round2(approvedPayments.reduce((s, p) => s + Number(p.amountDzd || 0), 0));
+      const paidInvoicesTotal = round2(validInvoices.reduce((s, i) => s + Number(i.paidDzd || (i.status === 'PAYEE' ? i.totalDzd : 0)), 0));
+
+      // Calculate effective cash/invoiced revenue: if separate payments logged use them, otherwise use invoices total
+      const effectiveCashIn = allPaymentsTotal > 0 ? allPaymentsTotal : (paidInvoicesTotal > 0 ? paidInvoicesTotal : allInvoicedTotal);
       const allOut = round2(db.expenses.reduce((s, e) => s + Number(e.amountDzd || 0), 0));
-      const treasuryBalance = round2(opening + allIn - allOut);
+      const treasuryBalance = round2(opening + effectiveCashIn - allOut);
 
       const start = payload.startDate || `${today.slice(0, 7)}-01`;
       const end = payload.endDate || `${today.slice(0, 7)}-31`;
@@ -261,10 +268,12 @@ export async function runDemoAction(action, payload = {}, currentUser = null) {
       const pExps = db.expenses.filter((e) => e.date >= start && e.date <= end);
       const pInvs = invoices.filter((i) => i.docType === 'FACTURE' && !['DRAFT', 'ANNULEE'].includes(i.status) && i.issueDate >= start && i.issueDate <= end);
 
-      const cashReceived = round2(pPays.reduce((s, p) => s + Number(p.amountDzd || 0), 0));
+      const periodInvoiced = round2(pInvs.reduce((s, i) => s + Number(i.totalDzd || 0), 0));
+      const periodPayments = round2(pPays.reduce((s, p) => s + Number(p.amountDzd || 0), 0));
+      const cashReceived = periodPayments > 0 ? periodPayments : periodInvoiced;
       const totalExpenses = round2(pExps.reduce((s, e) => s + Number(e.amountDzd || 0), 0));
       const netProfit = round2(cashReceived - totalExpenses);
-      const totalBilled = round2(pInvs.reduce((s, i) => s + Number(i.totalDzd || 0), 0));
+      const totalBilled = periodInvoiced > 0 ? periodInvoiced : allInvoicedTotal;
 
       let outstandingReceivables = 0;
       let overdueReceivables = 0;
@@ -360,6 +369,7 @@ export async function runDemoAction(action, payload = {}, currentUser = null) {
 
       return {
         treasuryBalance,
+        totalInvoiced: allInvoicedTotal,
         openingBalance: opening,
         kpis: {
           cashReceived, totalExpenses, expenseCount: pExps.length, netProfit,
@@ -377,11 +387,30 @@ export async function runDemoAction(action, payload = {}, currentUser = null) {
 
     case 'getBenefits': {
       const opening = Number(db.settings.openingTreasuryBalance || 0);
+      const paidInvIds = new Set(db.payments.filter((p) => p.status !== 'REJECTED').map((p) => p.invoiceId));
+      const invoiceRevenues = db.invoices
+        .filter((i) => i.docType === 'FACTURE' && !['DRAFT', 'ANNULEE'].includes(i.status) && !paidInvIds.has(i.id))
+        .map((i) => {
+          const cl = db.clients.find((c) => c.id === i.clientId);
+          return {
+            id: `inv_${i.id}`,
+            source: 'FACTURE',
+            readOnly: true,
+            date: i.issueDate || today,
+            type: 'REVENUE',
+            category: 'FACTURE_CLIENT',
+            description: (cl ? (cl.company || cl.name) : (i.clientName || 'Facture Client')) + (i.number ? ` (${i.number})` : ''),
+            amountDzd: Number(i.totalDzd || i.total || 0),
+            notes: i.notes || ''
+          };
+        });
+
       const merged = [
         ...db.payments.filter((p) => p.status !== 'REJECTED').map((p) => {
           const cl = db.clients.find((c) => c.id === p.clientId);
           return { id: `pay_${p.id}`, source: 'INVOICE_PAYMENT', readOnly: true, date: p.paymentDate, type: 'REVENUE', category: 'CLIENT_PAYMENT', description: cl ? (cl.company || cl.name) : 'Client', amountDzd: Number(p.amountDzd), notes: p.notes };
         }),
+        ...invoiceRevenues,
         ...db.expenses.map((e) => ({ id: `exp_${e.id}`, source: 'AGENCY_EXPENSE', readOnly: true, date: e.date, type: 'EXPENSE', category: e.category, description: e.description, amountDzd: Number(e.amountDzd), notes: e.notes })),
         ...db.benefits.map((b) => ({ ...b, source: 'MANUAL', readOnly: false, amountDzd: Number(b.amountDzd) }))
       ].sort((a, b) => b.date.localeCompare(a.date));
