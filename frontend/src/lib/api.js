@@ -126,11 +126,11 @@ export async function syncDataWithGoogleSheets() {
     throw new Error('يرجى ربط رابط Google Apps Script أولاً في صفحة الإعدادات.');
   }
 
-  const token = getAuthToken();
+  // 1. Check endpoint health & public reachability
   const testRes = await fetch(apiUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify({ action: 'getSettings', token })
+    body: JSON.stringify({ action: 'health' })
   });
 
   const contentType = testRes.headers.get('content-type') || '';
@@ -138,19 +138,31 @@ export async function syncDataWithGoogleSheets() {
   const isHtml = contentType.includes('text/html') || text.trim().startsWith('<!DOCTYPE') || text.trim().startsWith('<html');
 
   if (!testRes.ok || isHtml) {
-    throw new Error('تعذر الوصول إلى Google Apps Script: يرجى التأكد من ضبط (Who has access: Anyone) في Apps Script.');
+    throw new Error('تعذر الوصول إلى Google Apps Script: يرجى التأكد في Apps Script من (1) تشغيل setupAdpowrsERP والموافقة على الأذونات، و (2) ضبط Execute as = Me و Who has access = Anyone في Deploy.');
   }
 
+  // 2. Check user session
+  const token = getAuthToken();
+  if (!token) {
+    throw new Error('يرجى تسجيل الدخول أولاً (admin@adpowrs.com / Admin@2026) قبل مزامنة البيانات مع Google Sheets.');
+  }
+
+  const authRes = await fetch(apiUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({ action: 'getSettings', token })
+  });
+  const authText = await authRes.text();
   let json;
   try {
-    json = JSON.parse(text);
+    json = JSON.parse(authText);
   } catch (e) {
     throw new Error('استجابة غير صالحة من Google Apps Script.');
   }
 
   if (!json.ok) {
     if (json.code === 'UNAUTHORIZED') {
-      throw new Error('جلسة الدخول منتهية. يرجى تسجيل الدخول مجدداً لمزامنة Google Sheets.');
+      throw new Error('جلسة الدخول منتهية. يرجى تسجيل الدخول مجدداً (admin@adpowrs.com / Admin@2026) لمزامنة Google Sheets.');
     }
     throw new Error(json.error || 'فشل الاتصال بـ Google Apps Script');
   }

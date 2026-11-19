@@ -296,7 +296,7 @@ export default function Layout() {
             <div className="flex items-center gap-2 min-w-0">
               <span className="font-extrabold text-sm">⚠️</span>
               <span className="leading-snug">
-                <strong>تنبيه ربط Google Apps Script:</strong> الرابط مقيد حالياً بـ (Moi uniquement / Only myself). التطبيق يحفظ عملياتك محلياً بدقة 100%. للربط الحي مع Google Sheets: في Apps Script اضغط <em>Deploy ← Manage deployments ← Who has access: Anyone (أي شخص)</em>.
+                <strong>تنبيه ربط Google Apps Script:</strong> الرابط مقيد أو يحتاج تفعيل. التطبيق يحفظ عملياتك محلياً بدقة 100%. للربط الحي مع Google Sheets: في Apps Script شغّل <em>setupAdpowrsERP</em> للموافقة على الأذونات، ثم اضغط <em>Deploy ← Manage deployments ← ✏️ تعديل ← Version: New version ← Execute as: Me ← Who has access: Anyone</em>.
               </span>
             </div>
             <button
