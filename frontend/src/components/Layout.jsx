@@ -73,6 +73,13 @@ export default function Layout() {
   });
   const [searchQuery, setSearchQuery] = useState('');
   const [searchRes, setSearchRes] = useState(null);
+  const [gasAuthWarning, setGasAuthWarning] = useState(false);
+
+  useEffect(() => {
+    const onWarning = () => setGasAuthWarning(true);
+    window.addEventListener('adpowrs:gas_auth_warning', onWarning);
+    return () => window.removeEventListener('adpowrs:gas_auth_warning', onWarning);
+  }, []);
 
   const visibleSections = NAV_SECTIONS.map((sec) => ({
     ...sec,
@@ -258,6 +265,24 @@ export default function Layout() {
                 </button>
               ))}
             </div>
+          </div>
+        )}
+
+        {gasAuthWarning && (
+          <div className="bg-amber-600 text-white px-3 sm:px-4 py-2 text-xs flex flex-wrap items-center justify-between gap-2 shadow-sm">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="font-extrabold text-sm">⚠️</span>
+              <span className="leading-snug">
+                <strong>تنبيه ربط Google Apps Script:</strong> الرابط مقيد حالياً بـ (Moi uniquement / Only myself). التطبيق يحفظ عملياتك محلياً بدقة 100%. للربط الحي مع Google Sheets: في Apps Script اضغط <em>Deploy ← Manage deployments ← Who has access: Anyone (أي شخص)</em>.
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setGasAuthWarning(false)}
+              className="text-xs font-bold underline cursor-pointer hover:opacity-80 shrink-0"
+            >
+              إخفاء التنبيه
+            </button>
           </div>
         )}
 

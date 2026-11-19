@@ -65,29 +65,44 @@ function enrichInvoice_(inv, paymentsByInvoice, clientMap) {
 
 function computeInvoiceTotals_(items, discount, exchangeRate) {
   let subtotal = 0;
-  let taxTotal = 0;
-  const normalized = (items || []).map(function(it) {
+  const lines = (items || []).map(function(it) {
     const qty = toNum_(it.quantity || 1);
     const unitPrice = toNum_(it.unitPrice || 0);
-    const taxRate = toNum_(it.taxRate !== undefined ? it.taxRate : 19);
+    const taxRate = toNum_(it.taxRate !== undefined && it.taxRate !== '' ? it.taxRate : 19);
     const lineNet = round2_(qty * unitPrice);
-    const lineTax = round2_(lineNet * (taxRate / 100));
     subtotal += lineNet;
-    taxTotal += lineTax;
     return {
       description: String(it.description || ''),
       quantity: qty,
       unitPrice: unitPrice,
       taxRate: taxRate,
-      lineTotal: round2_(lineNet + lineTax)
+      lineNet: lineNet
     };
   });
-  const disc = toNum_(discount || 0);
+
   subtotal = round2_(subtotal);
+  const disc = round2_(toNum_(discount || 0));
+  const netCommercial = Math.max(0, round2_(subtotal - disc));
+  const discountRatio = subtotal > 0 ? (netCommercial / subtotal) : 1;
+
+  let taxTotal = 0;
+  const normalized = lines.map(function(l) {
+    const lineTax = round2_(l.lineNet * discountRatio * (l.taxRate / 100));
+    taxTotal += lineTax;
+    return {
+      description: l.description,
+      quantity: l.quantity,
+      unitPrice: l.unitPrice,
+      taxRate: l.taxRate,
+      lineTotal: round2_(l.lineNet + lineTax)
+    };
+  });
+
   taxTotal = round2_(taxTotal);
-  const total = round2_(Math.max(0, subtotal - disc + taxTotal));
+  const total = round2_(netCommercial + taxTotal);
   const rate = toNum_(exchangeRate || 1) || 1;
   const totalDzd = round2_(total * rate);
+
   return {
     items: normalized,
     subtotal: subtotal,
@@ -167,11 +182,41 @@ function handleSaveInvoice_(user, payload) {
   const issueDate = payload.issueDate || now.slice(0, 10);
   const dueDate = payload.dueDate || new Date(Date.now() + 15 * 86400000).toISOString().slice(0, 10);
 
+  // Auto-resolve or create client if clientName provided
+  let clientId = String(payload.clientId || '').trim();
+  const clientName = String(payload.clientName || '').trim();
+  if (!clientId && clientName) {
+    const clients = dbGetAll_('Clients');
+    const existing = clients.find(function(c) {
+      return (c.company || c.name || '').trim().toLowerCase() === clientName.toLowerCase();
+    });
+    if (existing) {
+      clientId = existing.id;
+    } else {
+      clientId = generateId_('cli');
+      dbInsert_('Clients', {
+        id: clientId,
+        name: clientName,
+        company: clientName,
+        email: '',
+        phone: '',
+        address: '',
+        taxId: '',
+        defaultTaxRate: 19,
+        tagsJson: '[]',
+        notesJson: '[]',
+        portalToken: generateToken_(),
+        createdAt: now,
+        updatedAt: now
+      });
+    }
+  }
+
   if (payload.id) {
     const existing = dbGetById_('Invoices', payload.id);
     if (!existing) throw new Error('Invoice not found');
     const updated = dbUpdate_('Invoices', payload.id, {
-      clientId: payload.clientId || existing.clientId,
+      clientId: clientId || existing.clientId,
       issueDate: issueDate,
       dueDate: dueDate,
       currency: currency,
@@ -200,7 +245,7 @@ function handleSaveInvoice_(user, payload) {
     id: generateId_(docType === 'DEVIS' ? 'dev' : 'fac'),
     docType: docType,
     number: number,
-    clientId: String(payload.clientId || ''),
+    clientId: clientId,
     status: status,
     issueDate: issueDate,
     dueDate: dueDate,

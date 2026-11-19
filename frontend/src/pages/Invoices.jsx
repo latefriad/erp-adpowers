@@ -22,11 +22,11 @@ function makeDefaultForm(docType = 'FACTURE', clientId = '', defaultTaxRate = 19
     exchangeRate: 1,
     issueDate: todayIso(),
     dueDate: new Date(Date.now() + 15 * 86400000).toISOString().slice(0, 10),
-    discount: 0,
+    discount: '',
     notes: '',
     finalize: true,
     markPaid: false,
-    items: [{ description: '', quantity: 1, unitPrice: 0, taxRate: Number(defaultTaxRate ?? 19) }]
+    items: [{ description: '', quantity: 1, unitPrice: '', taxRate: Number(defaultTaxRate ?? 19) }]
   };
 }
 
@@ -68,9 +68,9 @@ export default function Invoices({ defaultTab = 'FACTURE' }) {
 
   // Live summary totals for current tab (Factures / Devis)
   const activeDocs = invoices.filter((i) => i.status !== 'ANNULEE');
-  const sumTotalDzd = activeDocs.reduce((s, i) => s + Number(i.totalDzd || 0), 0);
-  const sumPaidDzd = activeDocs.reduce((s, i) => s + Number(i.paidDzd || 0), 0);
-  const sumRemainingDzd = activeDocs.reduce((s, i) => s + Number(i.remainingDzd || 0), 0);
+  const sumTotalDzd = activeDocs.reduce((s, i) => s + Number(i.totalDzd || (Number(i.total || 0) * Number(i.exchangeRate || 1))), 0);
+  const sumPaidDzd = activeDocs.reduce((s, i) => s + Number(i.paidDzd || (Number(i.paidAmount || 0) * Number(i.exchangeRate || 1))), 0);
+  const sumRemainingDzd = activeDocs.reduce((s, i) => s + Number(i.remainingDzd || (Number(i.remaining || 0) * Number(i.exchangeRate || 1))), 0);
 
   const handleCurrencyChange = (currency) => {
     const rate = currency === 'EUR' ? (settings.eurRate || 245) : currency === 'USD' ? (settings.usdRate || 225) : 1;
@@ -90,8 +90,8 @@ export default function Invoices({ defaultTab = 'FACTURE' }) {
     setForm((p) => ({
       ...p,
       items: [
-        ...p.items.filter((i) => i.description.trim() !== ''),
-        { description: srv.name, quantity: 1, unitPrice: Number(srv.salePrice), taxRate: Number(settings.defaultTaxRate ?? 19) }
+        ...p.items.filter((i) => String(i.description || '').trim() !== ''),
+        { description: srv.name, quantity: 1, unitPrice: srv.salePrice, taxRate: Number(settings.defaultTaxRate ?? 19) }
       ]
     }));
   };
@@ -99,11 +99,20 @@ export default function Invoices({ defaultTab = 'FACTURE' }) {
   const handleCreate = async (e) => {
     e.preventDefault();
     try {
+      const cleanItems = form.items.map((it) => ({
+        description: String(it.description || '').trim() || 'Prestation',
+        quantity: Math.max(1, Number(it.quantity || 1)),
+        unitPrice: Math.max(0, Number(it.unitPrice || 0)),
+        taxRate: Math.max(0, Number(it.taxRate !== undefined && it.taxRate !== '' ? it.taxRate : 19))
+      }));
+
       const res = await gasCall('saveInvoice', {
         ...form,
-        clientId: form.clientId || clients[0]?.id || '',
-        discount: Number(form.discount || 0),
-        exchangeRate: Number(form.exchangeRate || 1),
+        items: cleanItems,
+        clientId: form.clientId,
+        clientName: form.clientName,
+        discount: Math.max(0, Number(form.discount || 0)),
+        exchangeRate: Math.max(0.0001, Number(form.exchangeRate || 1)),
         finalize: form.finalize || form.markPaid
       });
 
@@ -118,7 +127,7 @@ export default function Invoices({ defaultTab = 'FACTURE' }) {
         });
       }
 
-      toast.success('تم إنشاء المستند وتحديث الحسابات ✓');
+      toast.success(form.docType === 'DEVIS' ? 'تم إنشاء عرض السعر بنجاح ✓' : 'تم حفظ الفاتورة وتحديث كل الحسابات ✓');
       setCreateOpen(false);
       setForm(makeDefaultForm(tab === 'DEVIS' ? 'DEVIS' : 'FACTURE', clients[0]?.id || '', settings?.defaultTaxRate ?? 19));
       invalidateFinancials();
@@ -192,15 +201,24 @@ export default function Invoices({ defaultTab = 'FACTURE' }) {
 
   const computedPreview = form.items.reduce(
     (acc, it) => {
-      const net = Number(it.quantity || 1) * Number(it.unitPrice || 0);
-      const tax = net * (Number(it.taxRate ?? 19) / 100);
-      acc.sub += net;
-      acc.tax += tax;
+      const qty = Math.max(1, Number(it.quantity || 1));
+      const up = Math.max(0, Number(it.unitPrice || 0));
+      const tr = Math.max(0, Number(it.taxRate !== undefined && it.taxRate !== '' ? it.taxRate : 19));
+      const lineNet = Math.round((qty * up + Number.EPSILON) * 100) / 100;
+      acc.sub += lineNet;
+      acc.lines.push({ qty, up, tr, lineNet });
       return acc;
     },
-    { sub: 0, tax: 0 }
+    { sub: 0, lines: [] }
   );
-  const previewTotal = Math.max(0, computedPreview.sub - Number(form.discount || 0) + computedPreview.tax);
+
+  const discountVal = Math.max(0, Number(form.discount || 0));
+  const netCommercial = Math.max(0, Math.round((computedPreview.sub - discountVal) * 100) / 100);
+  const discountRatio = computedPreview.sub > 0 ? (netCommercial / computedPreview.sub) : 1;
+  const totalTax = Math.round(computedPreview.lines.reduce((s, l) => s + (l.lineNet * discountRatio * (l.tr / 100)), 0) * 100) / 100;
+  const previewTotal = Math.round((netCommercial + totalTax) * 100) / 100;
+  const rateVal = Math.max(0.0001, Number(form.exchangeRate || 1));
+  const previewTotalDzd = Math.round(previewTotal * rateVal * 100) / 100;
 
   return (
     <div className="space-y-5">
@@ -230,11 +248,18 @@ export default function Invoices({ defaultTab = 'FACTURE' }) {
       </div>
 
       {/* Live Totals Strip */}
-      {tab !== 'RECURRING' && (
+      {tab === 'FACTURE' && (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <StatCard title={tab === 'DEVIS' ? 'إجمالي عروض الأسعار' : 'إجمالي الفواتير (DZD)'} value={formatMoney(sumTotalDzd)} subtitle={`${activeDocs.length} مستند`} tone="sky" />
+          <StatCard title="إجمالي الفواتير (DZD)" value={formatMoney(sumTotalDzd)} subtitle={`${activeDocs.length} مستند`} tone="sky" />
           <StatCard title="المحصّل (الكاش DZD)" value={formatMoney(sumPaidDzd)} tone="emerald" />
           <StatCard title="المتبقي للتحصيل (DZD)" value={formatMoney(sumRemainingDzd)} tone="amber" />
+        </div>
+      )}
+      {tab === 'DEVIS' && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <StatCard title="إجمالي عروض الأسعار (DZD)" value={formatMoney(sumTotalDzd)} subtitle={`${activeDocs.length} عرض سعر`} tone="sky" />
+          <StatCard title="عروض قيد الانتظار" value={String(activeDocs.filter((i) => i.status === 'EN_ATTENTE' || i.status === 'DRAFT').length)} tone="amber" />
+          <StatCard title="عروض محولة لفواتير" value={String(invoices.filter((i) => i.status === 'PAYEE' || i.status === 'ACCEPTE' || i.convertedFromId).length)} tone="emerald" />
         </div>
       )}
 
@@ -318,7 +343,14 @@ export default function Invoices({ defaultTab = 'FACTURE' }) {
                       <p>{inv.issueDate}</p>
                       <p className="text-[var(--text-muted)]">→ {inv.dueDate}</p>
                     </td>
-                    <td className="font-extrabold">{formatMoney(inv.total, inv.currency)}</td>
+                    <td className="font-extrabold">
+                      <p>{formatMoney(inv.total, inv.currency)}</p>
+                      {inv.currency !== 'DZD' && (
+                        <p className="text-[10px] text-[var(--text-muted)] font-normal">
+                          ≈ {formatMoney(inv.totalDzd || (Number(inv.total || 0) * Number(inv.exchangeRate || 1)), 'DZD')}
+                        </p>
+                      )}
+                    </td>
                     <td className="text-xs">
                       <p className="text-emerald-600 dark:text-emerald-400 font-bold">{formatMoney(inv.paidAmount, inv.currency)}</p>
                       {inv.remaining > 0 && <p className="text-rose-500">-{formatMoney(inv.remaining, inv.currency)}</p>}
@@ -428,9 +460,25 @@ export default function Invoices({ defaultTab = 'FACTURE' }) {
             <div>
               <label className="block text-xs font-semibold mb-1">العميل</label>
               {clients.length > 0 ? (
-                <select value={form.clientId} onChange={(e) => setForm({ ...form, clientId: e.target.value })} className="input-field">
-                  {clients.map((c) => <option key={c.id} value={c.id}>{c.company || c.name}</option>)}
-                </select>
+                <div className="space-y-1.5">
+                  <select
+                    value={form.clientId}
+                    onChange={(e) => setForm({ ...form, clientId: e.target.value, clientName: e.target.value ? '' : form.clientName })}
+                    className="input-field"
+                  >
+                    {clients.map((c) => <option key={c.id} value={c.id}>{c.company || c.name}</option>)}
+                    <option value="">+ عميل جديد (كتابة الاسم يدويّاً)...</option>
+                  </select>
+                  {!form.clientId && (
+                    <input
+                      required
+                      placeholder="اسم العميل الجديد"
+                      value={form.clientName}
+                      onChange={(e) => setForm({ ...form, clientName: e.target.value })}
+                      className="input-field text-xs"
+                    />
+                  )}
+                </div>
               ) : (
                 <input
                   required
@@ -458,7 +506,18 @@ export default function Invoices({ defaultTab = 'FACTURE' }) {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             <div><label className="block text-xs font-semibold mb-1">تاريخ الإصدار</label><input type="date" value={form.issueDate} onChange={(e) => setForm({ ...form, issueDate: e.target.value })} className="input-field" /></div>
             <div><label className="block text-xs font-semibold mb-1">تاريخ الاستحقاق</label><input type="date" value={form.dueDate} onChange={(e) => setForm({ ...form, dueDate: e.target.value })} className="input-field" /></div>
-            <div><label className="block text-xs font-semibold mb-1">خصم / Remise</label><input type="number" min="0" value={form.discount} onChange={(e) => setForm({ ...form, discount: Number(e.target.value || 0) })} className="input-field" /></div>
+            <div>
+              <label className="block text-xs font-semibold mb-1">خصم / Remise ({form.currency})</label>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="0"
+                value={form.discount}
+                onChange={(e) => setForm({ ...form, discount: e.target.value })}
+                className="input-field"
+              />
+            </div>
             <div>
               <label className="block text-xs font-semibold mb-1">إضافة من الخدمات</label>
               <select onChange={(e) => { addServiceToItems(e.target.value); e.target.value = ''; }} className="input-field">
@@ -474,7 +533,7 @@ export default function Invoices({ defaultTab = 'FACTURE' }) {
               <span className="text-xs font-bold">البنود / Lignes</span>
               <button
                 type="button"
-                onClick={() => setForm((p) => ({ ...p, items: [...p.items, { description: '', quantity: 1, unitPrice: 0, taxRate: Number(settings.defaultTaxRate ?? 19) }] }))}
+                onClick={() => setForm((p) => ({ ...p, items: [...p.items, { description: '', quantity: 1, unitPrice: '', taxRate: Number(settings?.defaultTaxRate ?? 19) }] }))}
                 className="text-xs font-bold text-indigo-500 cursor-pointer"
               >
                 + إضافة سطر
@@ -482,11 +541,39 @@ export default function Invoices({ defaultTab = 'FACTURE' }) {
             </div>
             {form.items.map((it, idx) => (
               <div key={idx} className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center p-2.5 sm:p-0 rounded-xl bg-[var(--surface-subtle)] sm:bg-transparent">
-                <input required placeholder="الوصف" value={it.description} onChange={(e) => updateItem(idx, { description: e.target.value })} className="input-field sm:col-span-5 text-xs" />
+                <input
+                  required
+                  placeholder="الوصف (اسم الخدمة أو البند)"
+                  value={it.description}
+                  onChange={(e) => updateItem(idx, { description: e.target.value })}
+                  className="input-field sm:col-span-5 text-xs"
+                />
                 <div className="grid grid-cols-3 sm:contents gap-2">
-                  <input type="number" min="1" placeholder="الكمية" value={it.quantity} onChange={(e) => updateItem(idx, { quantity: Number(e.target.value || 1) })} className="input-field sm:col-span-2 text-xs" />
-                  <input type="number" min="0" step="0.01" placeholder="السعر" value={it.unitPrice} onChange={(e) => updateItem(idx, { unitPrice: Number(e.target.value || 0) })} className="input-field sm:col-span-2 text-xs" />
-                  <input type="number" min="0" placeholder="TVA%" value={it.taxRate} onChange={(e) => updateItem(idx, { taxRate: Number(e.target.value || 0) })} className="input-field sm:col-span-2 text-xs" />
+                  <input
+                    type="number"
+                    min="1"
+                    placeholder="الكمية"
+                    value={it.quantity}
+                    onChange={(e) => updateItem(idx, { quantity: e.target.value })}
+                    className="input-field sm:col-span-2 text-xs"
+                  />
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    placeholder="السعر HT"
+                    value={it.unitPrice}
+                    onChange={(e) => updateItem(idx, { unitPrice: e.target.value })}
+                    className="input-field sm:col-span-2 text-xs"
+                  />
+                  <input
+                    type="number"
+                    min="0"
+                    placeholder="TVA%"
+                    value={it.taxRate}
+                    onChange={(e) => updateItem(idx, { taxRate: e.target.value })}
+                    className="input-field sm:col-span-2 text-xs"
+                  />
                 </div>
                 <button
                   type="button"
@@ -514,9 +601,20 @@ export default function Invoices({ defaultTab = 'FACTURE' }) {
                 </label>
               )}
             </div>
-            <div className="text-end space-y-0.5">
-              <p className="text-[var(--text-muted)]">HT: {formatMoney(computedPreview.sub, form.currency)} | TVA: {formatMoney(computedPreview.tax, form.currency)}</p>
-              <p className="font-extrabold text-sm">Total TTC: {formatMoney(previewTotal, form.currency)}</p>
+            <div className="text-end space-y-1">
+              <p className="text-[var(--text-muted)]">
+                المجموع الخام HT: {formatMoney(computedPreview.sub, form.currency)}
+                {discountVal > 0 && <span className="text-amber-500"> | خصم: -{formatMoney(discountVal, form.currency)}</span>}
+                {totalTax > 0 && <span> | TVA: +{formatMoney(totalTax, form.currency)}</span>}
+              </p>
+              <p className="font-extrabold text-sm text-indigo-600 dark:text-indigo-400">
+                المجموع النهائي TTC: {formatMoney(previewTotal, form.currency)}
+                {form.currency !== 'DZD' && (
+                  <span className="text-xs font-semibold text-[var(--text-muted)] ms-2">
+                    (≈ {formatMoney(previewTotalDzd, 'DZD')})
+                  </span>
+                )}
+              </p>
             </div>
           </div>
 

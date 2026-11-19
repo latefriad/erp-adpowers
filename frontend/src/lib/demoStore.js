@@ -149,35 +149,51 @@ function enrichInv(inv, db) {
 
 function computeTotals(items = [], discount = 0, rate = 1) {
   let subtotal = 0;
-  let taxTotal = 0;
-  const norm = items.map((it) => {
+  const lines = (items || []).map((it) => {
     const qty = Number(it.quantity || 1);
     const up = Number(it.unitPrice || 0);
-    const tr = Number(it.taxRate ?? 19);
+    const tr = Number(it.taxRate !== undefined && it.taxRate !== '' ? it.taxRate : 19);
     const net = round2(qty * up);
-    const tax = round2(net * (tr / 100));
     subtotal += net;
-    taxTotal += tax;
     return {
       description: String(it.description || ''),
       quantity: qty,
       unitPrice: up,
       taxRate: tr,
-      lineTotal: round2(net + tax)
+      lineNet: net
     };
   });
-  const disc = round2(discount || 0);
+
   subtotal = round2(subtotal);
+  const disc = round2(Number(discount || 0));
+  const netCommercial = Math.max(0, round2(subtotal - disc));
+  const discountRatio = subtotal > 0 ? (netCommercial / subtotal) : 1;
+
+  let taxTotal = 0;
+  const norm = lines.map((l) => {
+    const lineTax = round2(l.lineNet * discountRatio * (l.taxRate / 100));
+    taxTotal += lineTax;
+    return {
+      description: l.description,
+      quantity: l.quantity,
+      unitPrice: l.unitPrice,
+      taxRate: l.taxRate,
+      lineTotal: round2(l.lineNet + lineTax)
+    };
+  });
+
   taxTotal = round2(taxTotal);
-  const total = round2(Math.max(0, subtotal - disc + taxTotal));
+  const total = round2(netCommercial + taxTotal);
   const fx = Number(rate || 1) || 1;
+  const totalDzd = round2(total * fx);
+
   return {
     items: norm,
     subtotal,
     discount: disc,
     taxTotal,
     total,
-    totalDzd: round2(total * fx)
+    totalDzd
   };
 }
 
@@ -412,10 +428,40 @@ export async function runDemoAction(action, payload = {}, currentUser = null) {
       const docType = payload.docType === 'DEVIS' ? 'DEVIS' : 'FACTURE';
       const rate = Number(payload.exchangeRate || (payload.currency === 'EUR' ? db.settings.eurRate : payload.currency === 'USD' ? db.settings.usdRate : 1)) || 1;
       const calc = computeTotals(payload.items, payload.discount, rate);
+
+      // Resolve or auto-create client if clientName provided but clientId empty
+      let clientId = payload.clientId || '';
+      let clientName = (payload.clientName || '').trim();
+      if (!clientId && clientName) {
+        const existing = db.clients.find((c) => (c.company || c.name || '').trim().toLowerCase() === clientName.toLowerCase());
+        if (existing) {
+          clientId = existing.id;
+          clientName = existing.company || existing.name;
+        } else {
+          clientId = uid('cli');
+          const newCli = {
+            id: clientId,
+            name: clientName,
+            company: clientName,
+            email: '',
+            phone: '',
+            address: '',
+            taxId: '',
+            createdAt: today,
+            updatedAt: today
+          };
+          db.clients.push(newCli);
+        }
+      } else if (clientId) {
+        const c = db.clients.find((cl) => cl.id === clientId);
+        if (c) clientName = c.company || c.name;
+      }
+
       if (payload.id) {
-        db.invoices = db.invoices.map((i) => (i.id === payload.id ? { ...i, ...payload, ...calc, exchangeRate: rate } : i));
+        db.invoices = db.invoices.map((i) => (i.id === payload.id ? { ...i, ...payload, ...calc, clientId, clientName, exchangeRate: rate } : i));
         saveDb(db);
-        return { invoice: db.invoices.find((i) => i.id === payload.id) };
+        const updated = db.invoices.find((i) => i.id === payload.id);
+        return { invoice: enrichInv(updated, db) };
       }
       let number = '';
       if (payload.finalize) {
@@ -425,8 +471,8 @@ export async function runDemoAction(action, payload = {}, currentUser = null) {
       const inv = {
         id: uid(docType === 'DEVIS' ? 'dev' : 'fac'),
         docType, number,
-        clientId: payload.clientId || '',
-        clientName: payload.clientName || '',
+        clientId,
+        clientName,
         status: payload.finalize ? 'EN_ATTENTE' : 'DRAFT',
         issueDate: payload.issueDate || today,
         dueDate: payload.dueDate || today,
@@ -439,7 +485,7 @@ export async function runDemoAction(action, payload = {}, currentUser = null) {
       };
       db.invoices.unshift(inv);
       saveDb(db);
-      return { invoice: inv };
+      return { invoice: enrichInv(inv, db) };
     }
     case 'finalizeInvoice': {
       const inv = db.invoices.find((i) => i.id === payload.id);
