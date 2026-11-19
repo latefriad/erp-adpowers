@@ -72,6 +72,7 @@ export const STATUS_COLORS = {
   PAYEE: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
   ANNULEE: 'bg-slate-200 text-slate-500 line-through dark:bg-slate-800 dark:text-slate-500',
   A_PAYER: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
+  PARTIELLE: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300',
   WINNER: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
   LOSER: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300',
   PENDING: 'bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300',

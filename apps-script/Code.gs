@@ -208,6 +208,9 @@ function doPost(e) {
       case 'paySupplierBill':
         data = handlePaySupplierBill_(user, payload);
         break;
+      case 'recordSupplierBillPayment':
+        data = handleRecordSupplierBillPayment_(user, payload);
+        break;
       case 'deleteSupplierBill':
         requireRole_(user, ['ADMIN', 'ACCOUNTANT']);
         data = { deleted: dbDelete_('SupplierBills', payload.id) };

@@ -286,8 +286,17 @@ export async function runDemoAction(action, payload = {}, currentUser = null) {
         }
       });
 
-      const supplierPayables = round2(db.supplierBills.filter((b) => b.status === 'A_PAYER').reduce((s, b) => s + Number(b.amountDzd || 0), 0));
-      const overduePayables = round2(db.supplierBills.filter((b) => b.status === 'A_PAYER' && b.dueDate < today).reduce((s, b) => s + Number(b.amountDzd || 0), 0));
+      const unpaidBills = db.supplierBills.filter((b) => b.status !== 'PAYEE');
+      const supplierPayables = round2(unpaidBills.reduce((s, b) => {
+        const total = Number(b.amountDzd || b.amount || 0);
+        const paid = db.expenses.filter((e) => e.supplierBillId === b.id).reduce((sp, e) => sp + Number(e.amountDzd || e.amount || 0), 0);
+        return s + Math.max(0, total - paid);
+      }, 0));
+      const overduePayables = round2(unpaidBills.filter((b) => b.dueDate < today).reduce((s, b) => {
+        const total = Number(b.amountDzd || b.amount || 0);
+        const paid = db.expenses.filter((e) => e.supplierBillId === b.id).reduce((sp, e) => sp + Number(e.amountDzd || e.amount || 0), 0);
+        return s + Math.max(0, total - paid);
+      }, 0));
 
       const mrr = round2(db.recurring.filter((r) => r.active).reduce((s, r) => {
         const c = computeTotals(r.items, r.discount, r.exchangeRate).totalDzd;
@@ -575,11 +584,33 @@ export async function runDemoAction(action, payload = {}, currentUser = null) {
       return { budget: next };
     }
 
-    case 'listSuppliers':
+    case 'listSuppliers': {
+      const expByBill = {};
+      db.expenses.forEach((e) => {
+        if (e.supplierBillId) {
+          expByBill[e.supplierBillId] = round2((expByBill[e.supplierBillId] || 0) + Number(e.amountDzd || e.amount || 0));
+        }
+      });
       return {
         suppliers: db.suppliers,
-        bills: db.supplierBills.map((b) => ({ ...b, supplierName: db.suppliers.find((s) => s.id === b.supplierId)?.name || '' }))
+        bills: db.supplierBills.map((b) => {
+          const total = round2(b.amountDzd || b.amount || 0);
+          const paid = round2(expByBill[b.id] || (b.status === 'PAYEE' ? total : (b.paidAmount || 0)));
+          const remaining = round2(Math.max(0, total - paid));
+          let status = b.status || 'A_PAYER';
+          if (paid >= total - 0.01 && total > 0) status = 'PAYEE';
+          else if (paid > 0) status = 'PARTIELLE';
+          return {
+            ...b,
+            supplierName: db.suppliers.find((s) => s.id === b.supplierId)?.name || '',
+            totalAmount: total,
+            paidAmount: paid,
+            remainingAmount: remaining,
+            status
+          };
+        })
       };
+    }
     case 'saveSupplier': {
       const s = { id: payload.id || uid('sup'), ...payload };
       if (payload.id) db.suppliers = db.suppliers.map((x) => (x.id === payload.id ? s : x));
@@ -594,24 +625,83 @@ export async function runDemoAction(action, payload = {}, currentUser = null) {
     case 'saveSupplierBill': {
       const rate = Number(payload.exchangeRate || 1) || 1;
       const amount = round2(payload.amount || 0);
-      const b = { id: payload.id || uid('bill'), status: 'A_PAYER', ...payload, amount, exchangeRate: rate, amountDzd: round2(amount * rate) };
+      const b = { id: payload.id || uid('bill'), status: 'A_PAYER', paidAmount: 0, remainingAmount: amount, ...payload, amount, exchangeRate: rate, amountDzd: round2(amount * rate) };
       if (payload.id) db.supplierBills = db.supplierBills.map((x) => (x.id === payload.id ? b : x));
       else db.supplierBills.unshift(b);
       saveDb(db);
       return { bill: b };
     }
+    case 'recordSupplierBillPayment': {
+      const billId = payload.billId || payload.id;
+      const bill = db.supplierBills.find((b) => b.id === billId);
+      if (!bill) throw new Error('Supplier bill not found');
+
+      const total = round2(bill.amountDzd || bill.amount || 0);
+      const previouslyPaid = round2(
+        db.expenses.filter((e) => e.supplierBillId === bill.id)
+          .reduce((s, e) => s + Number(e.amountDzd || e.amount || 0), 0)
+      );
+      const remaining = round2(Math.max(0, total - previouslyPaid));
+      if (remaining <= 0) throw new Error('هذه الفاتورة مسددة بالكامل بالفعل.');
+
+      const paymentAmount = round2(Math.min(remaining, Number(payload.amount || 0)));
+      if (paymentAmount <= 0) throw new Error('يرجى إدخال مبلغ دفع صالح أكبر من 0.');
+
+      const sup = db.suppliers.find((s) => s.id === bill.supplierId);
+      const payDate = payload.date || payload.paymentDate || today;
+      const method = payload.method || 'VIREMENT';
+
+      const isFullyPaid = round2(previouslyPaid + paymentAmount) >= total - 0.01;
+      const newStatus = isFullyPaid ? 'PAYEE' : 'PARTIELLE';
+
+      const exp = {
+        id: uid('exp'),
+        date: payDate,
+        category: bill.category || 'AUTRE',
+        description: `[Versement Fournisseur: ${sup?.name || ''}] ${bill.description}${paymentAmount < remaining ? ' (دفعة جزئية)' : ' (تسديد كامل)'}`,
+        amount: paymentAmount,
+        currency: bill.currency || 'DZD',
+        exchangeRate: bill.exchangeRate || 1,
+        amountDzd: paymentAmount,
+        supplierBillId: bill.id,
+        notes: (payload.notes ? `${payload.notes} • ` : '') + `طريقة الدفع: ${method}`,
+        receiptUrl: ''
+      };
+      db.expenses.unshift(exp);
+
+      bill.status = newStatus;
+      bill.paidAmount = round2(previouslyPaid + paymentAmount);
+      if (isFullyPaid) bill.paidAt = payDate;
+      bill.expenseId = exp.id;
+      saveDb(db);
+
+      return {
+        bill: {
+          ...bill,
+          paidAmount: round2(previouslyPaid + paymentAmount),
+          remainingAmount: round2(Math.max(0, remaining - paymentAmount)),
+          status: newStatus
+        },
+        expense: exp
+      };
+    }
     case 'paySupplierBill': {
-      const bill = db.supplierBills.find((b) => b.id === payload.id);
-      if (bill && bill.status !== 'PAYEE') {
-        const sup = db.suppliers.find((s) => s.id === bill.supplierId);
-        const exp = { id: uid('exp'), date: today, category: bill.category || 'AUTRE', description: `[Fournisseur: ${sup?.name || ''}] ${bill.description}`, amount: bill.amount, currency: bill.currency || 'DZD', exchangeRate: bill.exchangeRate || 1, amountDzd: bill.amountDzd, supplierBillId: bill.id, notes: bill.notes || '' };
-        db.expenses.unshift(exp);
-        bill.status = 'PAYEE';
-        bill.paidAt = today;
-        bill.expenseId = exp.id;
-        saveDb(db);
-      }
-      return { bill };
+      const billId = payload.billId || payload.id;
+      const bill = db.supplierBills.find((b) => b.id === billId);
+      if (!bill) throw new Error('Supplier bill not found');
+      const previouslyPaid = round2(
+        db.expenses.filter((e) => e.supplierBillId === bill.id)
+          .reduce((s, e) => s + Number(e.amountDzd || e.amount || 0), 0)
+      );
+      const remaining = round2(Math.max(0, Number(bill.amountDzd || bill.amount) - previouslyPaid));
+      const payAmount = payload.amount ? Number(payload.amount) : remaining;
+      return runDemoAction('recordSupplierBillPayment', {
+        billId,
+        amount: payAmount,
+        date: payload.date || today,
+        method: payload.method || 'VIREMENT',
+        notes: payload.notes || 'تسديد فاتورة مورد'
+      }, user);
     }
     case 'deleteSupplierBill':
       db.supplierBills = db.supplierBills.filter((b) => b.id !== payload.id);

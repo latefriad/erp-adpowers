@@ -538,14 +538,33 @@ function handleListSuppliers_(user) {
   requireRole_(user, ['ADMIN', 'ACCOUNTANT']);
   const suppliers = dbGetAll_('Suppliers');
   const bills = dbGetAll_('SupplierBills');
+  const expenses = dbGetAll_('Expenses');
   const supMap = {};
   suppliers.forEach(function(s) { supMap[s.id] = s; });
+
+  const expByBill = {};
+  expenses.forEach(function(e) {
+    if (e.supplierBillId) {
+      expByBill[e.supplierBillId] = (expByBill[e.supplierBillId] || 0) + toNum_(e.amountDzd || e.amount);
+    }
+  });
 
   return {
     suppliers: suppliers,
     bills: bills.map(function(b) {
+      const total = toNum_(b.amountDzd || b.amount);
+      const paid = round2_(expByBill[b.id] || (b.status === 'PAYEE' ? total : 0));
+      const remaining = round2_(Math.max(0, total - paid));
+      let status = b.status || 'A_PAYER';
+      if (paid >= total - 0.01 && total > 0) status = 'PAYEE';
+      else if (paid > 0) status = 'PARTIELLE';
+
       return Object.assign({}, b, {
-        supplierName: supMap[b.supplierId] ? supMap[b.supplierId].name : ''
+        supplierName: supMap[b.supplierId] ? supMap[b.supplierId].name : '',
+        totalAmount: total,
+        paidAmount: paid,
+        remainingAmount: remaining,
+        status: status
       });
     }).sort(function(a, b) { return String(b.dueDate).localeCompare(String(a.dueDate)); })
   };
@@ -615,52 +634,102 @@ function handleSaveSupplierBill_(user, payload) {
 }
 
 /**
- * Atomic single source of truth: Paying a SupplierBill marks it PAYEE
- * AND creates the linked Expense row in one locked transaction.
+ * Records a supplier bill payment (full or partial versement).
+ * Automatically creates the linked Expense row in Expenses sheet
+ * and updates the bill status (PARTIELLE or PAYEE).
  */
-function handlePaySupplierBill_(user, payload) {
+function handleRecordSupplierBillPayment_(user, payload) {
   requireRole_(user, ['ADMIN', 'ACCOUNTANT']);
   const lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
-    const bill = dbGetById_('SupplierBills', payload.id);
+    const billId = payload.billId || payload.id;
+    const bill = dbGetById_('SupplierBills', billId);
     if (!bill) throw new Error('Supplier bill not found');
-    if (bill.status === 'PAYEE') throw new Error('Bill is already paid');
+
+    const total = toNum_(bill.amountDzd || bill.amount);
+    const expenses = dbGetAll_('Expenses');
+    let previouslyPaid = 0;
+    expenses.forEach(function(e) {
+      if (e.supplierBillId === bill.id) {
+        previouslyPaid += toNum_(e.amountDzd || e.amount);
+      }
+    });
+
+    const remaining = round2_(Math.max(0, total - previouslyPaid));
+    if (remaining <= 0) throw new Error('Cette facture fournisseur est déjà totalement payée.');
+
+    const paymentAmount = round2_(Math.min(remaining, toNum_(payload.amount)));
+    if (paymentAmount <= 0) throw new Error('Le montant du versement doit être supérieur à 0.');
 
     const supplier = dbGetById_('Suppliers', bill.supplierId);
     const now = new Date().toISOString();
-    const payDate = payload.date || now.slice(0, 10);
+    const payDate = payload.date || payload.paymentDate || now.slice(0, 10);
+    const method = payload.method || 'VIREMENT';
 
+    // 1. Create linked Expense
     const exp = {
       id: generateId_('exp'),
       date: payDate,
       category: bill.category || 'AUTRE',
-      description: '[Fournisseur: ' + (supplier ? supplier.name : '') + '] ' + bill.description,
-      amount: toNum_(bill.amount),
+      description: '[Versement Fournisseur: ' + (supplier ? supplier.name : '') + '] ' + bill.description + (paymentAmount < remaining ? ' (Versement partiel)' : ' (Solde)'),
+      amount: paymentAmount,
       currency: bill.currency || 'DZD',
       exchangeRate: toNum_(bill.exchangeRate || 1),
-      amountDzd: toNum_(bill.amountDzd),
+      amountDzd: paymentAmount,
       supplierBillId: bill.id,
       receiptUrl: '',
       receiptFileId: '',
-      notes: bill.notes || '',
+      notes: (payload.notes ? payload.notes + ' • ' : '') + 'Méthode: ' + method,
       createdBy: user.id,
       createdAt: now,
       updatedAt: now
     };
     dbInsert_('Expenses', exp);
 
+    // 2. Update Bill Status
+    const newTotalPaid = round2_(previouslyPaid + paymentAmount);
+    const isFullyPaid = newTotalPaid >= total - 0.01;
+    const newStatus = isFullyPaid ? 'PAYEE' : 'PARTIELLE';
+
     const updatedBill = dbUpdate_('SupplierBills', bill.id, {
-      status: 'PAYEE',
-      paidAt: payDate,
+      status: newStatus,
+      paidAt: isFullyPaid ? payDate : bill.paidAt,
       expenseId: exp.id,
       updatedAt: now
     });
 
-    return { bill: updatedBill, expense: exp };
+    logActivity_('SUPPLIER_BILL', bill.id, bill.supplierId, 'BILL_PAYMENT', 'Versement ' + paymentAmount + ' DZD pour ' + bill.description + ' (' + newStatus + ')', user);
+
+    return {
+      bill: Object.assign({}, updatedBill, {
+        paidAmount: newTotalPaid,
+        remainingAmount: round2_(Math.max(0, total - newTotalPaid)),
+        status: newStatus
+      }),
+      expense: exp
+    };
   } finally {
     lock.releaseLock();
   }
+}
+
+function handlePaySupplierBill_(user, payload) {
+  const bill = dbGetById_('SupplierBills', payload.id);
+  if (!bill) throw new Error('Supplier bill not found');
+  const expenses = dbGetAll_('Expenses');
+  let previouslyPaid = 0;
+  expenses.forEach(function(e) {
+    if (e.supplierBillId === bill.id) previouslyPaid += toNum_(e.amountDzd || e.amount);
+  });
+  const remaining = round2_(Math.max(0, toNum_(bill.amountDzd || bill.amount) - previouslyPaid));
+  return handleRecordSupplierBillPayment_(user, {
+    billId: payload.id,
+    amount: payload.amount ? toNum_(payload.amount) : remaining,
+    date: payload.date,
+    method: payload.method || 'VIREMENT',
+    notes: payload.notes || 'Paiement fournisseur'
+  });
 }
 
 /* =========================== MES BÉNÉFICES (ADMIN) ======================== */
