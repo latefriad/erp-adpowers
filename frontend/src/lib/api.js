@@ -2,7 +2,7 @@ import { runDemoAction } from './demoStore';
 
 const GAS_URL_KEY = 'adpowrs_gas_url';
 const TOKEN_KEY = 'adpowrs_token';
-export const DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbzDROGn93UYpmUsgQ0o8Q1Mo2j8L2Uep0jW5iYcOn3xUJUt8mAXyixjsFbcwvkwjdvfzg/exec';
+export const DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbxXIfMoGlPaMLrghl9UjITUEdjtvcUyS3aLNKEMzX8uhc-U9Cahg3ctvL2qP6ag5NOiVA/exec';
 
 export function getGasApiUrl() {
   try {
