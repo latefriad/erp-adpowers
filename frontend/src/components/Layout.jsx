@@ -1,14 +1,17 @@
 import { useEffect, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
+import toast from 'react-hot-toast';
 import {
   BarChart3, Wallet, Target, Users, FileBarChart2, FileText, FileCheck2, Receipt,
   Truck, Megaphone, FlaskConical, CheckSquare, Layers, Briefcase,
-  Settings, Menu, X, Sun, Moon, LogOut, Search, Sparkles, ChevronDown, PanelLeftClose, PanelLeftOpen
+  Settings, Menu, X, Sun, Moon, LogOut, Search, Sparkles, ChevronDown, PanelLeftClose, PanelLeftOpen,
+  CloudUpload, RefreshCw
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import { useTheme } from '../context/ThemeContext';
-import { gasCall } from '../lib/api';
+import { gasCall, syncDataWithGoogleSheets } from '../lib/api';
 
 const NAV_SECTIONS = [
   {
@@ -71,9 +74,29 @@ export default function Layout() {
     } catch (e) {}
     return { overview: true, billing: true, crm: true, operations: false, system: false };
   });
+  const qc = useQueryClient();
   const [searchQuery, setSearchQuery] = useState('');
   const [searchRes, setSearchRes] = useState(null);
   const [gasAuthWarning, setGasAuthWarning] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+
+  const handleSyncGoogleSheets = async () => {
+    setSyncing(true);
+    try {
+      const res = await syncDataWithGoogleSheets();
+      setGasAuthWarning(false);
+      qc.invalidateQueries();
+      if (res.pushedCount > 0) {
+        toast.success(`تمت مزامنة ${res.pushedCount} عملية بنجاح إلى Google Sheets ✓`);
+      } else {
+        toast.success('تم الاتصال والمزامنة بنجاح مع Google Sheets ✓');
+      }
+    } catch (err) {
+      toast.error(err.message || 'تعذرت المزامنة مع Google Sheets');
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   useEffect(() => {
     const onWarning = () => setGasAuthWarning(true);
@@ -368,6 +391,25 @@ export default function Layout() {
           </div>
 
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+            {/* Sync with Google Sheets Button */}
+            <button
+              type="button"
+              onClick={handleSyncGoogleSheets}
+              disabled={syncing}
+              title="مزامنة فورية وتحديث البيانات مع Google Sheets"
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
+                syncing
+                  ? 'bg-indigo-50 border-indigo-200 text-indigo-600 dark:bg-indigo-950/40 dark:border-indigo-800'
+                  : 'bg-emerald-500/10 border-emerald-500/25 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20'
+              }`}
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${syncing ? 'animate-spin' : ''}`} />
+              <span className="hidden md:inline">
+                {syncing ? 'جاري المزامنة...' : 'مزامنة مع Google Sheets'}
+              </span>
+              <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block animate-pulse" />
+            </button>
+
             <div className="flex items-center rounded-xl border border-[var(--border-subtle)] p-0.5 bg-[var(--surface-bg)]">
               {['ar', 'fr', 'en'].map((code) => (
                 <button

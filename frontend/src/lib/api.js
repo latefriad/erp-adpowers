@@ -114,3 +114,80 @@ export async function gasCall(action, payload = {}, opts = {}) {
     throw err;
   }
 }
+
+/**
+ * Verifies live connection to Google Apps Script and pushes any unsynced
+ * local demoStore records (clients, invoices, expenses) directly into Google Sheets.
+ */
+export async function syncDataWithGoogleSheets() {
+  const apiUrl = getGasApiUrl();
+  if (!apiUrl) {
+    throw new Error('يرجى ربط رابط Google Apps Script أولاً في صفحة الإعدادات.');
+  }
+
+  const token = getAuthToken();
+  const testRes = await fetch(apiUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({ action: 'getSettings', token })
+  });
+
+  const contentType = testRes.headers.get('content-type') || '';
+  const text = await testRes.text();
+  const isHtml = contentType.includes('text/html') || text.trim().startsWith('<!DOCTYPE') || text.trim().startsWith('<html');
+
+  if (!testRes.ok || isHtml) {
+    throw new Error('تعذر الوصول إلى Google Apps Script: يرجى التأكد من ضبط (Who has access: Anyone) في Apps Script.');
+  }
+
+  let json;
+  try {
+    json = JSON.parse(text);
+  } catch (e) {
+    throw new Error('استجابة غير صالحة من Google Apps Script.');
+  }
+
+  if (!json.ok) {
+    if (json.code === 'UNAUTHORIZED') {
+      throw new Error('جلسة الدخول منتهية. يرجى تسجيل الدخول مجدداً لمزامنة Google Sheets.');
+    }
+    throw new Error(json.error || 'فشل الاتصال بـ Google Apps Script');
+  }
+
+  // Push local records if any exist
+  let localDb = null;
+  try {
+    const raw = localStorage.getItem('adpowrs_demo_db_v2');
+    if (raw) localDb = JSON.parse(raw);
+  } catch (e) {}
+
+  let pushedCount = 0;
+  if (localDb) {
+    if (Array.isArray(localDb.clients) && localDb.clients.length > 0) {
+      for (const cl of localDb.clients) {
+        try {
+          await gasCall('saveClient', cl);
+          pushedCount++;
+        } catch (e) {}
+      }
+    }
+    if (Array.isArray(localDb.invoices) && localDb.invoices.length > 0) {
+      for (const inv of localDb.invoices) {
+        try {
+          await gasCall('saveInvoice', { ...inv, id: undefined, finalize: true });
+          pushedCount++;
+        } catch (e) {}
+      }
+    }
+    if (Array.isArray(localDb.expenses) && localDb.expenses.length > 0) {
+      for (const exp of localDb.expenses) {
+        try {
+          await gasCall('saveExpense', { ...exp, id: undefined });
+          pushedCount++;
+        } catch (e) {}
+      }
+    }
+  }
+
+  return { ok: true, pushedCount, settings: json.data?.settings };
+}
