@@ -100,6 +100,10 @@ export async function gasCall(action, payload = {}, opts = {}) {
       throw new Error(json.error || 'Apps Script API error');
     }
 
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('adpowrs:gas_connected'));
+    }
+
     return json.data;
   } catch (err) {
     // If network error (CORS, offline, DNS, or blocked fetch)

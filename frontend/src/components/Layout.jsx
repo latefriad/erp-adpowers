@@ -100,8 +100,13 @@ export default function Layout() {
 
   useEffect(() => {
     const onWarning = () => setGasAuthWarning(true);
+    const onConnected = () => setGasAuthWarning(false);
     window.addEventListener('adpowrs:gas_auth_warning', onWarning);
-    return () => window.removeEventListener('adpowrs:gas_auth_warning', onWarning);
+    window.addEventListener('adpowrs:gas_connected', onConnected);
+    return () => {
+      window.removeEventListener('adpowrs:gas_auth_warning', onWarning);
+      window.removeEventListener('adpowrs:gas_connected', onConnected);
+    };
   }, []);
 
   const visibleSections = NAV_SECTIONS.map((sec) => ({

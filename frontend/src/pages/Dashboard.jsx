@@ -160,7 +160,7 @@ export default function Dashboard() {
           </div>
           <div className="bg-white/15 backdrop-blur-xs rounded-xl px-3.5 py-2.5 min-w-32">
             <p className="text-[11px] text-indigo-100 font-semibold">إجمالي الفواتير الصادرة</p>
-            <p className="text-base font-extrabold">{formatMoney(data.totalInvoiced)}</p>
+            <p className="text-base font-extrabold">{formatMoney(data.totalInvoiced ?? kpis.totalBilled)}</p>
             <p className="text-[10px] text-indigo-100">Facturation Globale</p>
           </div>
           <div className="bg-white/15 backdrop-blur-xs rounded-xl px-3.5 py-2.5 min-w-32">
