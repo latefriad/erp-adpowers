@@ -169,6 +169,9 @@ function doPost(e) {
       case 'recordPayment':
         data = handleRecordPayment_(user, payload);
         break;
+      case 'markInvoicePaid':
+        data = handleMarkInvoicePaid_(user, payload);
+        break;
       case 'sendInvoiceEmail':
         data = handleSendInvoiceEmail_(user, payload);
         break;

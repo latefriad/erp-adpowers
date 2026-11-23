@@ -143,35 +143,40 @@ export default function Dashboard() {
           <p className="text-xs uppercase tracking-wider text-indigo-100 font-semibold">{t('dashboard.treasury')}</p>
           <p className="text-3xl lg:text-4xl font-extrabold mt-1">{formatMoney(data.treasuryBalance)}</p>
           <p className="text-xs text-indigo-100 mt-1 font-medium">
-            حساب فوري: الفواتير ({formatMoney(kpis.totalBilled || data.totalInvoiced)}) - المصاريف ({formatMoney(kpis.totalExpenses)})
+            الرصيد الفعلي المتوفر (كاش وبنوك) = المقبوض فعلياً ({formatMoney(data.totalCashIn ?? kpis.cashReceived)}) - المصاريف ({formatMoney(data.totalCashOut ?? kpis.totalExpenses)})
           </p>
         </div>
 
-        <div className="flex flex-wrap gap-3">
-          <div className="bg-white/15 backdrop-blur-xs rounded-xl px-4 py-3 min-w-36">
-            <p className="text-[11px] text-indigo-100 font-semibold">إجمالي الفواتير الصادرة</p>
-            <p className="text-lg font-extrabold">{formatMoney(kpis.totalBilled || data.totalInvoiced)}</p>
-            <p className="text-[11px] text-indigo-100">Factures Clients</p>
+        <div className="flex flex-wrap gap-2.5">
+          <div className="bg-white/15 backdrop-blur-xs rounded-xl px-3.5 py-2.5 min-w-32">
+            <p className="text-[11px] text-indigo-100 font-semibold">المحصّل كاش</p>
+            <p className="text-base font-extrabold">{formatMoney(data.totalCashIn ?? kpis.cashReceived)}</p>
+            <p className="text-[10px] text-indigo-100">Encaissé Réel</p>
           </div>
-          <div className="bg-white/15 backdrop-blur-xs rounded-xl px-4 py-3 min-w-36">
+          <div className="bg-white/15 backdrop-blur-xs rounded-xl px-3.5 py-2.5 min-w-32">
             <p className="text-[11px] text-indigo-100 font-semibold">إجمالي المصاريف</p>
-            <p className="text-lg font-extrabold">{formatMoney(kpis.totalExpenses)}</p>
-            <p className="text-[11px] text-indigo-100">{kpis.expenseCount} مصاريف مدفوعة</p>
+            <p className="text-base font-extrabold">{formatMoney(data.totalCashOut ?? kpis.totalExpenses)}</p>
+            <p className="text-[10px] text-indigo-100">Dépenses Réglées</p>
           </div>
-          <div className="bg-white/15 backdrop-blur-xs rounded-xl px-4 py-3 min-w-36">
-            <p className="text-[11px] text-indigo-100 font-semibold">صافي الأرباح (Bénéfice)</p>
-            <p className="text-lg font-extrabold">{formatMoney(kpis.netProfit)}</p>
-            <p className="text-[11px] text-indigo-100">هامش الربح: {kpis.profitMargin}%</p>
+          <div className="bg-white/15 backdrop-blur-xs rounded-xl px-3.5 py-2.5 min-w-32">
+            <p className="text-[11px] text-indigo-100 font-semibold">إجمالي الفواتير الصادرة</p>
+            <p className="text-base font-extrabold">{formatMoney(data.totalInvoiced)}</p>
+            <p className="text-[10px] text-indigo-100">Facturation Globale</p>
+          </div>
+          <div className="bg-white/15 backdrop-blur-xs rounded-xl px-3.5 py-2.5 min-w-32">
+            <p className="text-[11px] text-indigo-100 font-semibold">المتبقي غير المحصل</p>
+            <p className="text-base font-extrabold">{formatMoney(kpis.outstandingReceivables)}</p>
+            <p className="text-[10px] text-indigo-100">Créances Clients</p>
           </div>
         </div>
       </div>
 
       {/* 7 Core KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard title={t('dashboard.cashReceived')} value={formatMoney(kpis.cashReceived)} icon={TrendingUp} tone="emerald" />
-        <StatCard title={t('dashboard.totalExpenses')} value={formatMoney(kpis.totalExpenses)} subtitle={`${kpis.expenseCount} opérations`} icon={TrendingDown} tone="rose" />
-        <StatCard title={t('dashboard.netProfit')} value={formatMoney(kpis.netProfit)} subtitle={`${t('dashboard.margin')}: ${kpis.profitMargin}%`} icon={Wallet} tone={kpis.netProfit >= 0 ? 'indigo' : 'rose'} />
-        <StatCard title={t('dashboard.totalBilled')} value={formatMoney(kpis.totalBilled)} subtitle={`${t('dashboard.collectionRate')}: ${kpis.collectionRate}%`} icon={FileText} tone="sky" />
+        <StatCard title={t('dashboard.cashReceived')} value={formatMoney(kpis.cashReceived)} subtitle="الكاش المحصل في الفترة" icon={TrendingUp} tone="emerald" />
+        <StatCard title={t('dashboard.totalExpenses')} value={formatMoney(kpis.totalExpenses)} subtitle={`${kpis.expenseCount} مصاريف مدفوعة`} icon={TrendingDown} tone="rose" />
+        <StatCard title={t('dashboard.netProfit')} value={formatMoney(kpis.netProfit)} subtitle={`هامش الربح: ${kpis.profitMargin}%`} icon={Wallet} tone={kpis.netProfit >= 0 ? 'indigo' : 'rose'} />
+        <StatCard title={t('dashboard.totalBilled')} value={formatMoney(kpis.totalBilled)} subtitle={`نسبة التحصيل: ${kpis.collectionRate}%`} icon={FileText} tone="sky" />
         <StatCard title={t('dashboard.outstanding')} value={formatMoney(kpis.outstandingReceivables)} icon={Clock} tone="amber" />
         <StatCard title={t('dashboard.overdue')} value={formatMoney(kpis.overdueReceivables)} subtitle={`${kpis.overdueCount} factures`} icon={AlertTriangle} tone="rose" />
         <StatCard title={t('dashboard.payables')} value={formatMoney(kpis.supplierPayables)} subtitle={kpis.overduePayables > 0 ? `En retard: ${formatMoney(kpis.overduePayables)}` : 'À jour'} icon={Truck} tone="violet" />

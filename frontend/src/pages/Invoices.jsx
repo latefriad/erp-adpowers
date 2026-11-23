@@ -13,7 +13,7 @@ import { downloadInvoicePdf } from '../lib/pdf';
 import StatCard from '../components/StatCard';
 import Modal from '../components/Modal';
 
-function makeDefaultForm(docType = 'FACTURE', clientId = '', defaultTaxRate = 19) {
+function makeDefaultForm(docType = 'FACTURE', clientId = '', defaultTaxRate = 0) {
   return {
     docType,
     clientId,
@@ -25,8 +25,8 @@ function makeDefaultForm(docType = 'FACTURE', clientId = '', defaultTaxRate = 19
     discount: '',
     notes: '',
     finalize: true,
-    markPaid: false,
-    items: [{ description: '', quantity: 1, unitPrice: '', taxRate: Number(defaultTaxRate ?? 19) }]
+    markPaid: docType === 'FACTURE',
+    items: [{ description: '', quantity: 1, unitPrice: '', taxRate: Number(defaultTaxRate || 0) }]
   };
 }
 
@@ -383,17 +383,34 @@ export default function Invoices({ defaultTab = 'FACTURE' }) {
                           </button>
                         )}
                         {inv.docType === 'FACTURE' && inv.remaining > 0 && inv.status !== 'ANNULEE' && (
-                          <button
-                            type="button"
-                            title="Record Payment"
-                            onClick={() => {
-                              setPayModal(inv);
-                              setPayForm({ amount: String(inv.remaining), method: 'VIREMENT', paymentDate: todayIso(), reference: '' });
-                            }}
-                            className="p-1.5 rounded-lg bg-emerald-500/15 text-emerald-600 cursor-pointer"
-                          >
-                            <CreditCard className="w-3.5 h-3.5" />
-                          </button>
+                          <>
+                            <button
+                              type="button"
+                              title="تسديد كامل الفاتورة وإيداع المبلغ فوراً في الخزينة"
+                              onClick={async () => {
+                                try {
+                                  await gasCall('markInvoicePaid', { id: inv.id });
+                                  toast.success('تم تسديد الفاتورة بالكامل وتحديث رصيد الخزينة ✓');
+                                  invalidateFinancials();
+                                } catch (err) { toast.error(err.message); }
+                              }}
+                              className="px-2 py-1 rounded-lg bg-emerald-500/15 text-emerald-600 hover:bg-emerald-500/25 text-xs font-bold flex items-center gap-1 cursor-pointer"
+                            >
+                              <CheckCircle className="w-3.5 h-3.5" />
+                              <span>تسديد كامل</span>
+                            </button>
+                            <button
+                              type="button"
+                              title="تسجيل دفعة جزئية (Versement Partiel)"
+                              onClick={() => {
+                                setPayModal(inv);
+                                setPayForm({ amount: String(inv.remaining), method: 'VIREMENT', paymentDate: todayIso(), reference: '' });
+                              }}
+                              className="p-1.5 rounded-lg bg-indigo-500/15 text-indigo-600 hover:bg-indigo-500/25 cursor-pointer"
+                            >
+                              <CreditCard className="w-3.5 h-3.5" />
+                            </button>
+                          </>
                         )}
                         <button
                           type="button"
@@ -529,11 +546,36 @@ export default function Invoices({ defaultTab = 'FACTURE' }) {
 
           {/* Line Items */}
           <div className="space-y-2.5">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-xs font-bold">البنود / Lignes</span>
+              <div className="flex items-center gap-1.5 bg-[var(--surface-subtle)] p-1 rounded-xl text-xs">
+                <span className="text-[11px] text-[var(--text-muted)] px-1 font-medium">الضريبة:</span>
+                <button
+                  type="button"
+                  onClick={() => setForm((p) => ({ ...p, items: p.items.map((it) => ({ ...it, taxRate: 0 })) }))}
+                  className={`px-2.5 py-1 rounded-lg font-bold text-xs cursor-pointer ${
+                    form.items.every((it) => Number(it.taxRate || 0) === 0)
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'hover:bg-[var(--surface)] text-[var(--text-muted)]'
+                  }`}
+                >
+                  0% HT (بدون رسم)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setForm((p) => ({ ...p, items: p.items.map((it) => ({ ...it, taxRate: 19 })) }))}
+                  className={`px-2.5 py-1 rounded-lg font-bold text-xs cursor-pointer ${
+                    form.items.some((it) => Number(it.taxRate) === 19)
+                      ? 'bg-indigo-600 text-white shadow-xs'
+                      : 'hover:bg-[var(--surface)] text-[var(--text-muted)]'
+                  }`}
+                >
+                  19% TVA
+                </button>
+              </div>
               <button
                 type="button"
-                onClick={() => setForm((p) => ({ ...p, items: [...p.items, { description: '', quantity: 1, unitPrice: '', taxRate: Number(settings?.defaultTaxRate ?? 19) }] }))}
+                onClick={() => setForm((p) => ({ ...p, items: [...p.items, { description: '', quantity: 1, unitPrice: '', taxRate: Number(p.items[0]?.taxRate || 0) }] }))}
                 className="text-xs font-bold text-indigo-500 cursor-pointer"
               >
                 + إضافة سطر

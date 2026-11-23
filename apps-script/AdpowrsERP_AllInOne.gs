@@ -3,8 +3,6 @@
 // Pre-linked to Spreadsheet ID: 1XQRrR2CduOu1SS1CLW38Wncc7Ie3VB2KxE726P17ggo
 // ============================================================================
 
-const DEFAULT_SPREADSHEET_ID = "1XQRrR2CduOu1SS1CLW38Wncc7Ie3VB2KxE726P17ggo";
-
 
 // -------------------- Setup.gs --------------------
 /**
@@ -702,6 +700,350 @@ function handleUpdateUser_(user, payload) {
 }
 
 
+// -------------------- Code.gs --------------------
+/**
+ * ============================================================================
+ * ADPOWRS DIGITAL ERP — MAIN GOOGLE APPS SCRIPT API ROUTER
+ * ============================================================================
+ * Frontend calls `POST <WEB_APP_URL>` with `Content-Type: text/plain;charset=utf-8`
+ * and body: JSON.stringify({ action: '...', token: '...', payload: { ... } })
+ */
+
+const DEFAULT_SPREADSHEET_ID = '1XQRrR2CduOu1SS1CLW38Wncc7Ie3VB2KxE726P17ggo';
+
+function jsonResponse_(obj) {
+  return ContentService
+    .createTextOutput(JSON.stringify(obj))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+function getPublicSettings_() {
+  const s = getSettingsMap_();
+  return {
+    agencyName: s.agencyName || 'Adpowrs Digital',
+    tagline: s.tagline || '',
+    email: s.email || '',
+    phone: s.phone || '',
+    address: s.address || '',
+    website: s.website || '',
+    taxId: s.taxId || '',
+    rcNumber: s.rcNumber || '',
+    nisNumber: s.nisNumber || '',
+    bankAccount: s.bankAccount || '',
+    logoUrl: s.logoUrl || '',
+    primaryColor: s.primaryColor || '#6366f1',
+    secondaryColor: s.secondaryColor || '#0ea5e9',
+    defaultCurrency: s.defaultCurrency || 'DZD',
+    defaultTaxRate: toNum_(s.defaultTaxRate || 19),
+    eurRate: toNum_(s.eurRate || 245),
+    usdRate: toNum_(s.usdRate || 225),
+    openingTreasuryBalance: toNum_(s.openingTreasuryBalance || 0),
+    remindersEnabled: String(s.remindersEnabled).toLowerCase() === 'true',
+    reminderLeadDays: toNum_(s.reminderLeadDays || 3),
+    reminderIntervalDays: toNum_(s.reminderIntervalDays || 5),
+    portalBaseUrl: s.portalBaseUrl || '',
+    lastBackupAt: s.lastBackupAt || ''
+  };
+}
+
+function handleUpdateSettings_(user, payload) {
+  requireRole_(user, ['ADMIN']);
+  const allowed = [
+    'agencyName', 'tagline', 'email', 'phone', 'address', 'website',
+    'taxId', 'rcNumber', 'nisNumber', 'bankAccount', 'logoUrl',
+    'primaryColor', 'secondaryColor', 'defaultCurrency', 'defaultTaxRate',
+    'eurRate', 'usdRate', 'openingTreasuryBalance', 'remindersEnabled',
+    'reminderLeadDays', 'reminderIntervalDays', 'portalBaseUrl'
+  ];
+  allowed.forEach(function(k) {
+    if (payload[k] !== undefined) {
+      setSetting_(k, String(payload[k]));
+    }
+  });
+  return { settings: getPublicSettings_() };
+}
+
+function doGet(e) {
+  const action = e && e.parameter ? e.parameter.action : 'health';
+  if (action === 'publicPortal' && e.parameter.token) {
+    try {
+      return jsonResponse_({ ok: true, data: handlePublicPortal_({ token: e.parameter.token, month: e.parameter.month }) });
+    } catch (err) {
+      return jsonResponse_({ ok: false, error: err.message });
+    }
+  }
+  return jsonResponse_({
+    ok: true,
+    service: 'Adpowrs Digital ERP — Google Apps Script API',
+    version: '1.0.0',
+    timestamp: new Date().toISOString()
+  });
+}
+
+function doPost(e) {
+  try {
+    const rawBody = e && e.postData && e.postData.contents ? e.postData.contents : '{}';
+    const body = safeJsonParse_(rawBody, {});
+    const action = String(body.action || '');
+    const token = String(body.token || '');
+    const payload = body.payload || {};
+
+    // Public endpoints (no token required)
+    if (action === 'health') {
+      return jsonResponse_({ ok: true, data: { status: 'online', time: new Date().toISOString() } });
+    }
+    if (action === 'login') {
+      return jsonResponse_({ ok: true, data: handleLogin_(payload) });
+    }
+    if (action === 'publicPortal') {
+      return jsonResponse_({ ok: true, data: handlePublicPortal_(payload) });
+    }
+
+    // Authenticated endpoints
+    const user = verifySession_(token);
+    if (!user) {
+      return jsonResponse_({ ok: false, code: 'UNAUTHORIZED', error: 'Session expired or invalid. Please log in again.' });
+    }
+
+    let data;
+    switch (action) {
+      case 'me':
+        data = { user: user, settings: getPublicSettings_() };
+        break;
+      case 'logout':
+        destroySession_(token);
+        data = { loggedOut: true };
+        break;
+      case 'changePassword':
+        data = handleChangePassword_(user, payload);
+        break;
+
+      // Settings & Users
+      case 'getSettings':
+        data = { settings: getPublicSettings_() };
+        break;
+      case 'updateSettings':
+        data = handleUpdateSettings_(user, payload);
+        break;
+      case 'uploadLogo':
+        data = handleUploadLogo_(user, payload);
+        break;
+      case 'listUsers':
+        data = handleListUsers_(user);
+        break;
+      case 'createUser':
+        data = handleCreateUser_(user, payload);
+        break;
+      case 'updateUser':
+        data = handleUpdateUser_(user, payload);
+        break;
+
+      // Dashboard & Benefits
+      case 'getDashboard':
+        data = handleGetDashboard_(user, payload);
+        break;
+      case 'getBenefits':
+        data = handleGetBenefits_(user, payload);
+        break;
+      case 'saveBenefitTx':
+        data = handleSaveBenefitTx_(user, payload);
+        break;
+      case 'deleteBenefitTx':
+        requireRole_(user, ['ADMIN']);
+        data = { deleted: dbDelete_('Benefits', payload.id) };
+        break;
+
+      // Invoices, Quotes, Payments, Recurring
+      case 'listInvoices':
+        data = handleListInvoices_(user, payload);
+        break;
+      case 'saveInvoice':
+        data = handleSaveInvoice_(user, payload);
+        break;
+      case 'finalizeInvoice':
+        data = handleFinalizeInvoice_(user, payload);
+        break;
+      case 'convertQuoteToInvoice':
+        data = handleConvertQuoteToInvoice_(user, payload);
+        break;
+      case 'deleteInvoice':
+        data = handleDeleteInvoice_(user, payload);
+        break;
+      case 'recordPayment':
+        data = handleRecordPayment_(user, payload);
+        break;
+      case 'markInvoicePaid':
+        data = handleMarkInvoicePaid_(user, payload);
+        break;
+      case 'sendInvoiceEmail':
+        data = handleSendInvoiceEmail_(user, payload);
+        break;
+      case 'saveRecurring':
+        data = handleSaveRecurring_(user, payload);
+        break;
+      case 'deleteRecurring':
+        requireRole_(user, ['ADMIN', 'ACCOUNTANT']);
+        data = { deleted: dbDelete_('Recurring', payload.id) };
+        break;
+
+      // Expenses, Budgets & Suppliers
+      case 'listExpenses':
+        data = handleListExpenses_(user);
+        break;
+      case 'saveExpense':
+        data = handleSaveExpense_(user, payload);
+        break;
+      case 'deleteExpense':
+        requireRole_(user, ['ADMIN', 'ACCOUNTANT']);
+        data = { deleted: dbDelete_('Expenses', payload.id) };
+        break;
+      case 'saveBudgetGoal':
+        data = handleSaveBudgetGoal_(user, payload);
+        break;
+      case 'listSuppliers':
+        data = handleListSuppliers_(user);
+        break;
+      case 'saveSupplier':
+        data = handleSaveSupplier_(user, payload);
+        break;
+      case 'deleteSupplier':
+        requireRole_(user, ['ADMIN', 'ACCOUNTANT']);
+        data = { deleted: dbDelete_('Suppliers', payload.id) };
+        break;
+      case 'saveSupplierBill':
+        data = handleSaveSupplierBill_(user, payload);
+        break;
+      case 'paySupplierBill':
+        data = handlePaySupplierBill_(user, payload);
+        break;
+      case 'recordSupplierBillPayment':
+        data = handleRecordSupplierBillPayment_(user, payload);
+        break;
+      case 'deleteSupplierBill':
+        requireRole_(user, ['ADMIN', 'ACCOUNTANT']);
+        data = { deleted: dbDelete_('SupplierBills', payload.id) };
+        break;
+
+      // Leads & Clients 360° & Reports
+      case 'listLeads':
+        data = handleListLeads_(user);
+        break;
+      case 'saveLead':
+        data = handleSaveLead_(user, payload);
+        break;
+      case 'deleteLead':
+        requireRole_(user, ['ADMIN', 'MEDIA_BUYER']);
+        data = { deleted: dbDelete_('Leads', payload.id) };
+        break;
+      case 'convertLeadToClient':
+        data = handleConvertLeadToClient_(user, payload);
+        break;
+      case 'listClients':
+        data = handleListClients_(user);
+        break;
+      case 'saveClient':
+        data = handleSaveClient_(user, payload);
+        break;
+      case 'deleteClient':
+        requireRole_(user, ['ADMIN']);
+        data = { deleted: dbDelete_('Clients', payload.id) };
+        break;
+      case 'getClientDetail':
+        data = handleGetClientDetail_(user, payload);
+        break;
+      case 'getClientReport':
+        data = handleGetClientReport_(user, payload);
+        break;
+
+      // Services
+      case 'listServices':
+        data = handleListServices_(user);
+        break;
+      case 'saveService':
+        data = handleSaveService_(user, payload);
+        break;
+      case 'deleteService':
+        requireRole_(user, ['ADMIN']);
+        data = { deleted: dbDelete_('Services', payload.id) };
+        break;
+
+      // AdSpend & Testili
+      case 'listAdSpend':
+        data = handleListAdSpend_(user);
+        break;
+      case 'saveAdSpend':
+        data = handleSaveAdSpend_(user, payload);
+        break;
+      case 'deleteAdSpend':
+        requireRole_(user, ['ADMIN', 'MEDIA_BUYER']);
+        data = { deleted: dbDelete_('AdSpend', payload.id) };
+        break;
+      case 'listTestili':
+        data = handleListTestili_(user);
+        break;
+      case 'saveTestili':
+        data = handleSaveTestili_(user, payload);
+        break;
+      case 'deleteTestili':
+        requireRole_(user, ['ADMIN', 'MEDIA_BUYER']);
+        data = { deleted: dbDelete_('Testili', payload.id) };
+        break;
+      case 'pushTestiliToAdSpend':
+        data = handlePushTestiliToAdSpend_(user, payload);
+        break;
+
+      // Tasks & Project Templates
+      case 'listTasks':
+        data = handleListTasks_(user);
+        break;
+      case 'saveTask':
+        data = handleSaveTask_(user, payload);
+        break;
+      case 'deleteTask':
+        requireRole_(user, ['ADMIN', 'MEDIA_BUYER']);
+        data = { deleted: dbDelete_('Tasks', payload.id) };
+        break;
+      case 'listTemplates':
+        data = handleListTemplates_(user);
+        break;
+      case 'saveTemplate':
+        data = handleSaveTemplate_(user, payload);
+        break;
+      case 'deleteTemplate':
+        requireRole_(user, ['ADMIN', 'MEDIA_BUYER']);
+        data = { deleted: dbDelete_('Templates', payload.id) };
+        break;
+      case 'applyTemplate':
+        data = handleApplyTemplate_(user, payload);
+        break;
+
+      // Search, Backups & Archive
+      case 'globalSearch':
+        data = handleGlobalSearch_(user, payload);
+        break;
+      case 'triggerBackup':
+        data = handleTriggerBackup_(user);
+        break;
+      case 'listBackups':
+        data = handleListBackups_(user);
+        break;
+      case 'archiveYear':
+        data = handleArchiveYear_(user, payload);
+        break;
+
+      default:
+        return jsonResponse_({ ok: false, error: 'Unknown action: ' + action });
+    }
+
+    return jsonResponse_({ ok: true, data: data });
+  } catch (err) {
+    const msg = err && err.message ? err.message : String(err);
+    const code = msg.indexOf('FORBIDDEN') === 0 ? 'FORBIDDEN' : (msg.indexOf('UNAUTHORIZED') === 0 ? 'UNAUTHORIZED' : 'ERROR');
+    return jsonResponse_({ ok: false, code: code, error: msg });
+  }
+}
+
+
 // -------------------- Finance.gs --------------------
 /**
  * ============================================================================
@@ -725,15 +1067,22 @@ function enrichInvoice_(inv, paymentsByInvoice, clientMap) {
   const items = safeJsonParse_(inv.itemsJson, []);
   const pays = paymentsByInvoice[inv.id] || [];
   const approvedPays = pays.filter(function(p) { return p.status !== 'REJECTED'; });
-  const paidAmount = round2_(approvedPays.reduce(function(s, p) { return s + toNum_(p.amount); }, 0));
-  const paidDzd = round2_(approvedPays.reduce(function(s, p) { return s + toNum_(p.amountDzd); }, 0));
+  const paidPayments = round2_(approvedPays.reduce(function(s, p) { return s + toNum_(p.amount); }, 0));
+  const paidPaymentsDzd = round2_(approvedPays.reduce(function(s, p) { return s + toNum_(p.amountDzd); }, 0));
   const total = toNum_(inv.total);
   const totalDzd = toNum_(inv.totalDzd || total * toNum_(inv.exchangeRate || 1));
+
+  const isMarkedPaid = inv.status === 'PAYEE';
+  const paidAmount = round2_(isMarkedPaid && paidPayments < total ? total : paidPayments);
+  const paidDzd = round2_(isMarkedPaid && paidPaymentsDzd < totalDzd ? totalDzd : (paidPayments > 0 ? paidPaymentsDzd : (paidAmount * toNum_(inv.exchangeRate || 1))));
   const remaining = round2_(Math.max(0, total - paidAmount));
   const remainingDzd = round2_(Math.max(0, totalDzd - paidDzd));
 
   const today = new Date().toISOString().slice(0, 10);
   let computedStatus = inv.status || 'DRAFT';
+  if (paidAmount >= total - 0.01 && total > 0) computedStatus = 'PAYEE';
+  else if (paidAmount > 0) computedStatus = 'PARTIELLE';
+
   const isOverdue =
     inv.docType === 'FACTURE' &&
     computedStatus !== 'DRAFT' &&
@@ -773,7 +1122,7 @@ function computeInvoiceTotals_(items, discount, exchangeRate) {
   const lines = (items || []).map(function(it) {
     const qty = toNum_(it.quantity || 1);
     const unitPrice = toNum_(it.unitPrice || 0);
-    const taxRate = toNum_(it.taxRate !== undefined && it.taxRate !== '' ? it.taxRate : 19);
+    const taxRate = toNum_(it.taxRate !== undefined && it.taxRate !== '' ? it.taxRate : 0);
     const lineNet = round2_(qty * unitPrice);
     subtotal += lineNet;
     return {
@@ -942,9 +1291,10 @@ function handleSaveInvoice_(user, payload) {
     return { invoice: updated };
   }
 
-  const finalizeNow = Boolean(payload.finalize);
+  const isPaidNow = Boolean(payload.markPaid) || payload.status === 'PAYEE';
+  const finalizeNow = Boolean(payload.finalize) || isPaidNow;
   const number = finalizeNow ? nextLegalDocumentNumber_(docType, issueDate) : '';
-  const status = finalizeNow ? 'EN_ATTENTE' : 'DRAFT';
+  const status = isPaidNow ? 'PAYEE' : (finalizeNow ? 'EN_ATTENTE' : 'DRAFT');
 
   const record = {
     id: generateId_(docType === 'DEVIS' ? 'dev' : 'fac'),
@@ -977,10 +1327,67 @@ function handleSaveInvoice_(user, payload) {
   };
 
   dbInsert_('Invoices', record);
+  if (isPaidNow && docType === 'FACTURE' && calc.total > 0) {
+    const pay = {
+      id: generateId_('pay'),
+      invoiceId: record.id,
+      clientId: clientId,
+      amount: round2_(calc.total),
+      currency: currency,
+      exchangeRate: exchangeRate,
+      amountDzd: round2_(calc.totalDzd),
+      method: String(payload.paymentMethod || 'ESPECES'),
+      paymentDate: issueDate,
+      reference: 'PAID-ON-CREATE',
+      status: 'APPROVED',
+      notes: 'تسديد مباشر عند إنشاء الفاتورة',
+      createdAt: now
+    };
+    dbInsert_('Payments', pay);
+  }
+
   if (finalizeNow) {
     logActivity_('INVOICE', record.id, record.clientId, 'INVOICE_ISSUED', docType + ' ' + number + ' issued (' + calc.total + ' ' + currency + ')', user);
   }
   return { invoice: record };
+}
+
+function handleMarkInvoicePaid_(user, payload) {
+  requireRole_(user, ['ADMIN', 'ACCOUNTANT']);
+  const inv = dbGetById_('Invoices', payload.id);
+  if (!inv) throw new Error('Invoice not found');
+  const payments = dbGetAll_('Payments', true).filter(function(p) {
+    return p.invoiceId === inv.id && p.status !== 'REJECTED';
+  });
+  const alreadyPaid = round2_(payments.reduce(function(s, p) { return s + toNum_(p.amount); }, 0));
+  const remaining = round2_(Math.max(0, toNum_(inv.total) - alreadyPaid));
+  const amountToPay = remaining > 0 ? remaining : toNum_(inv.total);
+  const now = new Date().toISOString();
+  const payDate = payload.paymentDate || now.slice(0, 10);
+  const rate = toNum_(inv.exchangeRate || 1) || 1;
+
+  const payment = {
+    id: generateId_('pay'),
+    invoiceId: inv.id,
+    clientId: inv.clientId,
+    amount: amountToPay,
+    currency: inv.currency || 'DZD',
+    exchangeRate: rate,
+    amountDzd: round2_(amountToPay * rate),
+    method: String(payload.method || 'ESPECES'),
+    paymentDate: payDate,
+    reference: String(payload.reference || 'SOLDE-TOTAL'),
+    status: 'APPROVED',
+    notes: String(payload.notes || 'تسديد كامل الفاتورة'),
+    createdAt: now
+  };
+  dbInsert_('Payments', payment);
+
+  const number = inv.number || nextLegalDocumentNumber_(inv.docType, inv.issueDate);
+  dbUpdate_('Invoices', inv.id, { number: number, status: 'PAYEE', updatedAt: now });
+
+  logActivity_('INVOICE', inv.id, inv.clientId, 'INVOICE_PAID', 'Invoice ' + (inv.number || inv.id) + ' marked fully paid (' + amountToPay + ' ' + inv.currency + ')', user);
+  return { invoice: inv, payment: payment };
 }
 
 function handleFinalizeInvoice_(user, payload) {
@@ -1474,7 +1881,7 @@ function handleGetBenefits_(user, payload) {
   });
 
   invoices.forEach(function(i) {
-    if (i.docType === 'FACTURE' && i.status !== 'DRAFT' && i.status !== 'ANNULEE' && !paidInvIds[i.id]) {
+    if (i.docType === 'FACTURE' && i.status === 'PAYEE' && !paidInvIds[i.id]) {
       const cl = clientMap[i.clientId];
       merged.push({
         id: 'inv_' + i.id,
@@ -1482,8 +1889,8 @@ function handleGetBenefits_(user, payload) {
         readOnly: true,
         date: String(i.issueDate || i.createdAt).slice(0, 10),
         type: 'REVENUE',
-        category: 'FACTURE_CLIENT',
-        description: (i.number ? i.number + ' — ' : '') + (cl ? (cl.company || cl.name) : (i.clientName || 'Client')),
+        category: 'FACTURE_PAYEE',
+        description: (i.number ? i.number + ' — ' : '') + (cl ? (cl.company || cl.name) : (i.clientName || 'Facture Payée')),
         amountDzd: toNum_(i.totalDzd || i.total),
         notes: i.notes || ''
       });
@@ -1655,14 +2062,38 @@ function handleGetDashboard_(user, payload) {
   const validInvoices = invoices.filter(function(i) {
     return i.docType === 'FACTURE' && i.status !== 'DRAFT' && i.status !== 'ANNULEE';
   });
-  const allInvoicedTotal = validInvoices.reduce(function(s, i) { return s + toNum_(i.totalDzd); }, 0);
-  const allPaymentsTotal = payments.reduce(function(s, p) { return s + toNum_(p.amountDzd); }, 0);
-  const paidInvoicesTotal = validInvoices.reduce(function(s, i) {
-    return s + (i.status === 'PAYEE' ? toNum_(i.totalDzd) : toNum_(i.paidDzd || 0));
-  }, 0);
-  const effectiveCashIn = allPaymentsTotal > 0 ? allPaymentsTotal : (paidInvoicesTotal > 0 ? paidInvoicesTotal : allInvoicedTotal);
-  const allExpenses = expenses.reduce(function(s, e) { return s + toNum_(e.amountDzd); }, 0);
-  const treasuryBalance = round2_(opening + effectiveCashIn - allExpenses);
+  const allInvoicedTotal = round2_(validInvoices.reduce(function(s, i) { return s + toNum_(i.totalDzd); }, 0));
+
+  const validInvIdMap = {};
+  validInvoices.forEach(function(i) { validInvIdMap[i.id] = true; });
+
+  const linkedPaymentsSum = round2_(payments.filter(function(p) {
+    return p.invoiceId && validInvIdMap[p.invoiceId];
+  }).reduce(function(s, p) { return s + toNum_(p.amountDzd); }, 0));
+
+  const unlinkedPaymentsSum = round2_(payments.filter(function(p) {
+    return !p.invoiceId || !validInvIdMap[p.invoiceId];
+  }).reduce(function(s, p) { return s + toNum_(p.amountDzd); }, 0));
+
+  const pPaidInvIds = {};
+  payments.forEach(function(p) { if (p.invoiceId) pPaidInvIds[p.invoiceId] = true; });
+
+  const directPayeeSum = round2_(validInvoices.filter(function(i) {
+    return i.status === 'PAYEE' && !pPaidInvIds[i.id];
+  }).reduce(function(s, i) { return s + toNum_(i.totalDzd); }, 0));
+
+  const benefits = dbGetAll_('Benefits');
+  let manualRevenuesTotal = 0;
+  let allWithdrawalsTotal = 0;
+  benefits.forEach(function(b) {
+    if (b.type === 'REVENUE') manualRevenuesTotal += toNum_(b.amountDzd);
+    else if (b.type === 'WITHDRAWAL') allWithdrawalsTotal += toNum_(b.amountDzd);
+  });
+
+  const totalCashIn = round2_(linkedPaymentsSum + directPayeeSum + unlinkedPaymentsSum + manualRevenuesTotal);
+  const allExpenses = round2_(expenses.reduce(function(s, e) { return s + toNum_(e.amountDzd); }, 0));
+  const totalCashOut = round2_(allExpenses + allWithdrawalsTotal);
+  const treasuryBalance = round2_(opening + totalCashIn - totalCashOut);
 
   // 2. Period KPIs
   const periodPayments = payments.filter(function(p) {
@@ -1673,19 +2104,27 @@ function handleGetDashboard_(user, payload) {
     const d = String(e.date || e.createdAt).slice(0, 10);
     return d >= startDate && d <= endDate;
   });
-  const periodBilledInvoices = invoices.filter(function(i) {
+  const periodBilledInvoices = validInvoices.filter(function(i) {
     const d = String(i.issueDate || i.createdAt).slice(0, 10);
-    return i.docType === 'FACTURE' && i.status !== 'DRAFT' && i.status !== 'ANNULEE' && d >= startDate && d <= endDate;
+    return d >= startDate && d <= endDate;
   });
 
   const periodInvoiced = round2_(periodBilledInvoices.reduce(function(s, i) { return s + toNum_(i.totalDzd); }, 0));
-  const periodPaid = round2_(periodPayments.reduce(function(s, p) { return s + toNum_(p.amountDzd); }, 0));
-  const cashReceived = periodPaid > 0 ? periodPaid : (periodInvoiced > 0 ? periodInvoiced : allInvoicedTotal);
+  const periodPaymentsSum = round2_(periodPayments.reduce(function(s, p) { return s + toNum_(p.amountDzd); }, 0));
+
+  const pPeriodPaidIds = {};
+  periodPayments.forEach(function(p) { if (p.invoiceId) pPeriodPaidIds[p.invoiceId] = true; });
+  const pDirectPaidSum = round2_(periodBilledInvoices.filter(function(i) {
+    return i.status === 'PAYEE' && !pPeriodPaidIds[i.id];
+  }).reduce(function(s, i) { return s + toNum_(i.totalDzd); }, 0));
+
+  const cashReceived = round2_(periodPaymentsSum + pDirectPaidSum);
   const totalExpenses = round2_(periodExpenses.reduce(function(s, e) { return s + toNum_(e.amountDzd); }, 0));
   const netProfit = round2_(cashReceived - totalExpenses);
+  const invoicedNetProfit = round2_(periodInvoiced - totalExpenses);
   const profitMargin = cashReceived > 0 ? round2_((netProfit / cashReceived) * 100) : 0;
-  const totalBilled = round2_(periodInvoiced > 0 ? periodInvoiced : allInvoicedTotal);
-  const collectionRate = totalBilled > 0 ? round2_(Math.min(100, (cashReceived / totalBilled) * 100)) : 0;
+  const totalBilled = periodInvoiced;
+  const collectionRate = totalBilled > 0 ? round2_(Math.min(100, (cashReceived / totalBilled) * 100)) : (cashReceived > 0 ? 100 : 0);
 
   // Open & overdue receivables (all active invoices)
   let outstandingReceivables = 0;
@@ -1740,9 +2179,13 @@ function handleGetDashboard_(user, payload) {
   const monthlyCashCurve = months6.map(function(m) {
     const rev = payments.filter(function(p) { return String(p.paymentDate || p.createdAt).slice(0, 7) === m; })
       .reduce(function(s, p) { return s + toNum_(p.amountDzd); }, 0);
+    const mDirectPayee = validInvoices.filter(function(inv) {
+      return inv.status === 'PAYEE' && String(inv.issueDate || '').slice(0, 7) === m && !pPaidInvIds[inv.id];
+    }).reduce(function(s, inv) { return s + toNum_(inv.totalDzd); }, 0);
+    const ci = round2_(rev + mDirectPayee);
     const exp = expenses.filter(function(e) { return String(e.date || e.createdAt).slice(0, 7) === m; })
       .reduce(function(s, e) { return s + toNum_(e.amountDzd); }, 0);
-    return { month: m, cashIn: round2_(rev), expenses: round2_(exp), profit: round2_(rev - exp) };
+    return { month: m, cashIn: ci, expenses: round2_(exp), profit: round2_(ci - exp) };
   });
 
   // Invoice status breakdown
@@ -1840,12 +2283,15 @@ function handleGetDashboard_(user, payload) {
   return {
     treasuryBalance: treasuryBalance,
     totalInvoiced: allInvoicedTotal,
+    totalCashIn: totalCashIn,
+    totalCashOut: totalCashOut,
     openingBalance: opening,
     kpis: {
       cashReceived: cashReceived,
       totalExpenses: totalExpenses,
       expenseCount: periodExpenses.length,
       netProfit: netProfit,
+      invoicedNetProfit: invoicedNetProfit,
       profitMargin: profitMargin,
       totalBilled: totalBilled,
       collectionRate: collectionRate,
@@ -3037,346 +3483,6 @@ function cronWeeklyDriveBackup() {
     runWeeklyBackupInternal_();
   } catch (err) {
     Logger.log('Weekly backup error: ' + err.message);
-  }
-}
-
-
-// -------------------- Code.gs --------------------
-/**
- * ============================================================================
- * ADPOWRS DIGITAL ERP — MAIN GOOGLE APPS SCRIPT API ROUTER
- * ============================================================================
- * Frontend calls `POST <WEB_APP_URL>` with `Content-Type: text/plain;charset=utf-8`
- * and body: JSON.stringify({ action: '...', token: '...', payload: { ... } })
- */
-
-
-function jsonResponse_(obj) {
-  return ContentService
-    .createTextOutput(JSON.stringify(obj))
-    .setMimeType(ContentService.MimeType.JSON);
-}
-
-function getPublicSettings_() {
-  const s = getSettingsMap_();
-  return {
-    agencyName: s.agencyName || 'Adpowrs Digital',
-    tagline: s.tagline || '',
-    email: s.email || '',
-    phone: s.phone || '',
-    address: s.address || '',
-    website: s.website || '',
-    taxId: s.taxId || '',
-    rcNumber: s.rcNumber || '',
-    nisNumber: s.nisNumber || '',
-    bankAccount: s.bankAccount || '',
-    logoUrl: s.logoUrl || '',
-    primaryColor: s.primaryColor || '#6366f1',
-    secondaryColor: s.secondaryColor || '#0ea5e9',
-    defaultCurrency: s.defaultCurrency || 'DZD',
-    defaultTaxRate: toNum_(s.defaultTaxRate || 19),
-    eurRate: toNum_(s.eurRate || 245),
-    usdRate: toNum_(s.usdRate || 225),
-    openingTreasuryBalance: toNum_(s.openingTreasuryBalance || 0),
-    remindersEnabled: String(s.remindersEnabled).toLowerCase() === 'true',
-    reminderLeadDays: toNum_(s.reminderLeadDays || 3),
-    reminderIntervalDays: toNum_(s.reminderIntervalDays || 5),
-    portalBaseUrl: s.portalBaseUrl || '',
-    lastBackupAt: s.lastBackupAt || ''
-  };
-}
-
-function handleUpdateSettings_(user, payload) {
-  requireRole_(user, ['ADMIN']);
-  const allowed = [
-    'agencyName', 'tagline', 'email', 'phone', 'address', 'website',
-    'taxId', 'rcNumber', 'nisNumber', 'bankAccount', 'logoUrl',
-    'primaryColor', 'secondaryColor', 'defaultCurrency', 'defaultTaxRate',
-    'eurRate', 'usdRate', 'openingTreasuryBalance', 'remindersEnabled',
-    'reminderLeadDays', 'reminderIntervalDays', 'portalBaseUrl'
-  ];
-  allowed.forEach(function(k) {
-    if (payload[k] !== undefined) {
-      setSetting_(k, String(payload[k]));
-    }
-  });
-  return { settings: getPublicSettings_() };
-}
-
-function doGet(e) {
-  const action = e && e.parameter ? e.parameter.action : 'health';
-  if (action === 'publicPortal' && e.parameter.token) {
-    try {
-      return jsonResponse_({ ok: true, data: handlePublicPortal_({ token: e.parameter.token, month: e.parameter.month }) });
-    } catch (err) {
-      return jsonResponse_({ ok: false, error: err.message });
-    }
-  }
-  return jsonResponse_({
-    ok: true,
-    service: 'Adpowrs Digital ERP — Google Apps Script API',
-    version: '1.0.0',
-    timestamp: new Date().toISOString()
-  });
-}
-
-function doPost(e) {
-  try {
-    const rawBody = e && e.postData && e.postData.contents ? e.postData.contents : '{}';
-    const body = safeJsonParse_(rawBody, {});
-    const action = String(body.action || '');
-    const token = String(body.token || '');
-    const payload = body.payload || {};
-
-    // Public endpoints (no token required)
-    if (action === 'health') {
-      return jsonResponse_({ ok: true, data: { status: 'online', time: new Date().toISOString() } });
-    }
-    if (action === 'login') {
-      return jsonResponse_({ ok: true, data: handleLogin_(payload) });
-    }
-    if (action === 'publicPortal') {
-      return jsonResponse_({ ok: true, data: handlePublicPortal_(payload) });
-    }
-
-    // Authenticated endpoints
-    const user = verifySession_(token);
-    if (!user) {
-      return jsonResponse_({ ok: false, code: 'UNAUTHORIZED', error: 'Session expired or invalid. Please log in again.' });
-    }
-
-    let data;
-    switch (action) {
-      case 'me':
-        data = { user: user, settings: getPublicSettings_() };
-        break;
-      case 'logout':
-        destroySession_(token);
-        data = { loggedOut: true };
-        break;
-      case 'changePassword':
-        data = handleChangePassword_(user, payload);
-        break;
-
-      // Settings & Users
-      case 'getSettings':
-        data = { settings: getPublicSettings_() };
-        break;
-      case 'updateSettings':
-        data = handleUpdateSettings_(user, payload);
-        break;
-      case 'uploadLogo':
-        data = handleUploadLogo_(user, payload);
-        break;
-      case 'listUsers':
-        data = handleListUsers_(user);
-        break;
-      case 'createUser':
-        data = handleCreateUser_(user, payload);
-        break;
-      case 'updateUser':
-        data = handleUpdateUser_(user, payload);
-        break;
-
-      // Dashboard & Benefits
-      case 'getDashboard':
-        data = handleGetDashboard_(user, payload);
-        break;
-      case 'getBenefits':
-        data = handleGetBenefits_(user, payload);
-        break;
-      case 'saveBenefitTx':
-        data = handleSaveBenefitTx_(user, payload);
-        break;
-      case 'deleteBenefitTx':
-        requireRole_(user, ['ADMIN']);
-        data = { deleted: dbDelete_('Benefits', payload.id) };
-        break;
-
-      // Invoices, Quotes, Payments, Recurring
-      case 'listInvoices':
-        data = handleListInvoices_(user, payload);
-        break;
-      case 'saveInvoice':
-        data = handleSaveInvoice_(user, payload);
-        break;
-      case 'finalizeInvoice':
-        data = handleFinalizeInvoice_(user, payload);
-        break;
-      case 'convertQuoteToInvoice':
-        data = handleConvertQuoteToInvoice_(user, payload);
-        break;
-      case 'deleteInvoice':
-        data = handleDeleteInvoice_(user, payload);
-        break;
-      case 'recordPayment':
-        data = handleRecordPayment_(user, payload);
-        break;
-      case 'sendInvoiceEmail':
-        data = handleSendInvoiceEmail_(user, payload);
-        break;
-      case 'saveRecurring':
-        data = handleSaveRecurring_(user, payload);
-        break;
-      case 'deleteRecurring':
-        requireRole_(user, ['ADMIN', 'ACCOUNTANT']);
-        data = { deleted: dbDelete_('Recurring', payload.id) };
-        break;
-
-      // Expenses, Budgets & Suppliers
-      case 'listExpenses':
-        data = handleListExpenses_(user);
-        break;
-      case 'saveExpense':
-        data = handleSaveExpense_(user, payload);
-        break;
-      case 'deleteExpense':
-        requireRole_(user, ['ADMIN', 'ACCOUNTANT']);
-        data = { deleted: dbDelete_('Expenses', payload.id) };
-        break;
-      case 'saveBudgetGoal':
-        data = handleSaveBudgetGoal_(user, payload);
-        break;
-      case 'listSuppliers':
-        data = handleListSuppliers_(user);
-        break;
-      case 'saveSupplier':
-        data = handleSaveSupplier_(user, payload);
-        break;
-      case 'deleteSupplier':
-        requireRole_(user, ['ADMIN', 'ACCOUNTANT']);
-        data = { deleted: dbDelete_('Suppliers', payload.id) };
-        break;
-      case 'saveSupplierBill':
-        data = handleSaveSupplierBill_(user, payload);
-        break;
-      case 'paySupplierBill':
-        data = handlePaySupplierBill_(user, payload);
-        break;
-      case 'recordSupplierBillPayment':
-        data = handleRecordSupplierBillPayment_(user, payload);
-        break;
-      case 'deleteSupplierBill':
-        requireRole_(user, ['ADMIN', 'ACCOUNTANT']);
-        data = { deleted: dbDelete_('SupplierBills', payload.id) };
-        break;
-
-      // Leads & Clients 360° & Reports
-      case 'listLeads':
-        data = handleListLeads_(user);
-        break;
-      case 'saveLead':
-        data = handleSaveLead_(user, payload);
-        break;
-      case 'deleteLead':
-        requireRole_(user, ['ADMIN', 'MEDIA_BUYER']);
-        data = { deleted: dbDelete_('Leads', payload.id) };
-        break;
-      case 'convertLeadToClient':
-        data = handleConvertLeadToClient_(user, payload);
-        break;
-      case 'listClients':
-        data = handleListClients_(user);
-        break;
-      case 'saveClient':
-        data = handleSaveClient_(user, payload);
-        break;
-      case 'deleteClient':
-        requireRole_(user, ['ADMIN']);
-        data = { deleted: dbDelete_('Clients', payload.id) };
-        break;
-      case 'getClientDetail':
-        data = handleGetClientDetail_(user, payload);
-        break;
-      case 'getClientReport':
-        data = handleGetClientReport_(user, payload);
-        break;
-
-      // Services
-      case 'listServices':
-        data = handleListServices_(user);
-        break;
-      case 'saveService':
-        data = handleSaveService_(user, payload);
-        break;
-      case 'deleteService':
-        requireRole_(user, ['ADMIN']);
-        data = { deleted: dbDelete_('Services', payload.id) };
-        break;
-
-      // AdSpend & Testili
-      case 'listAdSpend':
-        data = handleListAdSpend_(user);
-        break;
-      case 'saveAdSpend':
-        data = handleSaveAdSpend_(user, payload);
-        break;
-      case 'deleteAdSpend':
-        requireRole_(user, ['ADMIN', 'MEDIA_BUYER']);
-        data = { deleted: dbDelete_('AdSpend', payload.id) };
-        break;
-      case 'listTestili':
-        data = handleListTestili_(user);
-        break;
-      case 'saveTestili':
-        data = handleSaveTestili_(user, payload);
-        break;
-      case 'deleteTestili':
-        requireRole_(user, ['ADMIN', 'MEDIA_BUYER']);
-        data = { deleted: dbDelete_('Testili', payload.id) };
-        break;
-      case 'pushTestiliToAdSpend':
-        data = handlePushTestiliToAdSpend_(user, payload);
-        break;
-
-      // Tasks & Project Templates
-      case 'listTasks':
-        data = handleListTasks_(user);
-        break;
-      case 'saveTask':
-        data = handleSaveTask_(user, payload);
-        break;
-      case 'deleteTask':
-        requireRole_(user, ['ADMIN', 'MEDIA_BUYER']);
-        data = { deleted: dbDelete_('Tasks', payload.id) };
-        break;
-      case 'listTemplates':
-        data = handleListTemplates_(user);
-        break;
-      case 'saveTemplate':
-        data = handleSaveTemplate_(user, payload);
-        break;
-      case 'deleteTemplate':
-        requireRole_(user, ['ADMIN', 'MEDIA_BUYER']);
-        data = { deleted: dbDelete_('Templates', payload.id) };
-        break;
-      case 'applyTemplate':
-        data = handleApplyTemplate_(user, payload);
-        break;
-
-      // Search, Backups & Archive
-      case 'globalSearch':
-        data = handleGlobalSearch_(user, payload);
-        break;
-      case 'triggerBackup':
-        data = handleTriggerBackup_(user);
-        break;
-      case 'listBackups':
-        data = handleListBackups_(user);
-        break;
-      case 'archiveYear':
-        data = handleArchiveYear_(user, payload);
-        break;
-
-      default:
-        return jsonResponse_({ ok: false, error: 'Unknown action: ' + action });
-    }
-
-    return jsonResponse_({ ok: true, data: data });
-  } catch (err) {
-    const msg = err && err.message ? err.message : String(err);
-    const code = msg.indexOf('FORBIDDEN') === 0 ? 'FORBIDDEN' : (msg.indexOf('UNAUTHORIZED') === 0 ? 'UNAUTHORIZED' : 'ERROR');
-    return jsonResponse_({ ok: false, code: code, error: msg });
   }
 }
 

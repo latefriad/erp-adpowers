@@ -20,15 +20,22 @@ function enrichInvoice_(inv, paymentsByInvoice, clientMap) {
   const items = safeJsonParse_(inv.itemsJson, []);
   const pays = paymentsByInvoice[inv.id] || [];
   const approvedPays = pays.filter(function(p) { return p.status !== 'REJECTED'; });
-  const paidAmount = round2_(approvedPays.reduce(function(s, p) { return s + toNum_(p.amount); }, 0));
-  const paidDzd = round2_(approvedPays.reduce(function(s, p) { return s + toNum_(p.amountDzd); }, 0));
+  const paidPayments = round2_(approvedPays.reduce(function(s, p) { return s + toNum_(p.amount); }, 0));
+  const paidPaymentsDzd = round2_(approvedPays.reduce(function(s, p) { return s + toNum_(p.amountDzd); }, 0));
   const total = toNum_(inv.total);
   const totalDzd = toNum_(inv.totalDzd || total * toNum_(inv.exchangeRate || 1));
+
+  const isMarkedPaid = inv.status === 'PAYEE';
+  const paidAmount = round2_(isMarkedPaid && paidPayments < total ? total : paidPayments);
+  const paidDzd = round2_(isMarkedPaid && paidPaymentsDzd < totalDzd ? totalDzd : (paidPayments > 0 ? paidPaymentsDzd : (paidAmount * toNum_(inv.exchangeRate || 1))));
   const remaining = round2_(Math.max(0, total - paidAmount));
   const remainingDzd = round2_(Math.max(0, totalDzd - paidDzd));
 
   const today = new Date().toISOString().slice(0, 10);
   let computedStatus = inv.status || 'DRAFT';
+  if (paidAmount >= total - 0.01 && total > 0) computedStatus = 'PAYEE';
+  else if (paidAmount > 0) computedStatus = 'PARTIELLE';
+
   const isOverdue =
     inv.docType === 'FACTURE' &&
     computedStatus !== 'DRAFT' &&
@@ -68,7 +75,7 @@ function computeInvoiceTotals_(items, discount, exchangeRate) {
   const lines = (items || []).map(function(it) {
     const qty = toNum_(it.quantity || 1);
     const unitPrice = toNum_(it.unitPrice || 0);
-    const taxRate = toNum_(it.taxRate !== undefined && it.taxRate !== '' ? it.taxRate : 19);
+    const taxRate = toNum_(it.taxRate !== undefined && it.taxRate !== '' ? it.taxRate : 0);
     const lineNet = round2_(qty * unitPrice);
     subtotal += lineNet;
     return {
@@ -237,9 +244,10 @@ function handleSaveInvoice_(user, payload) {
     return { invoice: updated };
   }
 
-  const finalizeNow = Boolean(payload.finalize);
+  const isPaidNow = Boolean(payload.markPaid) || payload.status === 'PAYEE';
+  const finalizeNow = Boolean(payload.finalize) || isPaidNow;
   const number = finalizeNow ? nextLegalDocumentNumber_(docType, issueDate) : '';
-  const status = finalizeNow ? 'EN_ATTENTE' : 'DRAFT';
+  const status = isPaidNow ? 'PAYEE' : (finalizeNow ? 'EN_ATTENTE' : 'DRAFT');
 
   const record = {
     id: generateId_(docType === 'DEVIS' ? 'dev' : 'fac'),
@@ -272,10 +280,67 @@ function handleSaveInvoice_(user, payload) {
   };
 
   dbInsert_('Invoices', record);
+  if (isPaidNow && docType === 'FACTURE' && calc.total > 0) {
+    const pay = {
+      id: generateId_('pay'),
+      invoiceId: record.id,
+      clientId: clientId,
+      amount: round2_(calc.total),
+      currency: currency,
+      exchangeRate: exchangeRate,
+      amountDzd: round2_(calc.totalDzd),
+      method: String(payload.paymentMethod || 'ESPECES'),
+      paymentDate: issueDate,
+      reference: 'PAID-ON-CREATE',
+      status: 'APPROVED',
+      notes: 'تسديد مباشر عند إنشاء الفاتورة',
+      createdAt: now
+    };
+    dbInsert_('Payments', pay);
+  }
+
   if (finalizeNow) {
     logActivity_('INVOICE', record.id, record.clientId, 'INVOICE_ISSUED', docType + ' ' + number + ' issued (' + calc.total + ' ' + currency + ')', user);
   }
   return { invoice: record };
+}
+
+function handleMarkInvoicePaid_(user, payload) {
+  requireRole_(user, ['ADMIN', 'ACCOUNTANT']);
+  const inv = dbGetById_('Invoices', payload.id);
+  if (!inv) throw new Error('Invoice not found');
+  const payments = dbGetAll_('Payments', true).filter(function(p) {
+    return p.invoiceId === inv.id && p.status !== 'REJECTED';
+  });
+  const alreadyPaid = round2_(payments.reduce(function(s, p) { return s + toNum_(p.amount); }, 0));
+  const remaining = round2_(Math.max(0, toNum_(inv.total) - alreadyPaid));
+  const amountToPay = remaining > 0 ? remaining : toNum_(inv.total);
+  const now = new Date().toISOString();
+  const payDate = payload.paymentDate || now.slice(0, 10);
+  const rate = toNum_(inv.exchangeRate || 1) || 1;
+
+  const payment = {
+    id: generateId_('pay'),
+    invoiceId: inv.id,
+    clientId: inv.clientId,
+    amount: amountToPay,
+    currency: inv.currency || 'DZD',
+    exchangeRate: rate,
+    amountDzd: round2_(amountToPay * rate),
+    method: String(payload.method || 'ESPECES'),
+    paymentDate: payDate,
+    reference: String(payload.reference || 'SOLDE-TOTAL'),
+    status: 'APPROVED',
+    notes: String(payload.notes || 'تسديد كامل الفاتورة'),
+    createdAt: now
+  };
+  dbInsert_('Payments', payment);
+
+  const number = inv.number || nextLegalDocumentNumber_(inv.docType, inv.issueDate);
+  dbUpdate_('Invoices', inv.id, { number: number, status: 'PAYEE', updatedAt: now });
+
+  logActivity_('INVOICE', inv.id, inv.clientId, 'INVOICE_PAID', 'Invoice ' + (inv.number || inv.id) + ' marked fully paid (' + amountToPay + ' ' + inv.currency + ')', user);
+  return { invoice: inv, payment: payment };
 }
 
 function handleFinalizeInvoice_(user, payload) {
@@ -769,7 +834,7 @@ function handleGetBenefits_(user, payload) {
   });
 
   invoices.forEach(function(i) {
-    if (i.docType === 'FACTURE' && i.status !== 'DRAFT' && i.status !== 'ANNULEE' && !paidInvIds[i.id]) {
+    if (i.docType === 'FACTURE' && i.status === 'PAYEE' && !paidInvIds[i.id]) {
       const cl = clientMap[i.clientId];
       merged.push({
         id: 'inv_' + i.id,
@@ -777,8 +842,8 @@ function handleGetBenefits_(user, payload) {
         readOnly: true,
         date: String(i.issueDate || i.createdAt).slice(0, 10),
         type: 'REVENUE',
-        category: 'FACTURE_CLIENT',
-        description: (i.number ? i.number + ' — ' : '') + (cl ? (cl.company || cl.name) : (i.clientName || 'Client')),
+        category: 'FACTURE_PAYEE',
+        description: (i.number ? i.number + ' — ' : '') + (cl ? (cl.company || cl.name) : (i.clientName || 'Facture Payée')),
         amountDzd: toNum_(i.totalDzd || i.total),
         notes: i.notes || ''
       });
@@ -950,14 +1015,38 @@ function handleGetDashboard_(user, payload) {
   const validInvoices = invoices.filter(function(i) {
     return i.docType === 'FACTURE' && i.status !== 'DRAFT' && i.status !== 'ANNULEE';
   });
-  const allInvoicedTotal = validInvoices.reduce(function(s, i) { return s + toNum_(i.totalDzd); }, 0);
-  const allPaymentsTotal = payments.reduce(function(s, p) { return s + toNum_(p.amountDzd); }, 0);
-  const paidInvoicesTotal = validInvoices.reduce(function(s, i) {
-    return s + (i.status === 'PAYEE' ? toNum_(i.totalDzd) : toNum_(i.paidDzd || 0));
-  }, 0);
-  const effectiveCashIn = allPaymentsTotal > 0 ? allPaymentsTotal : (paidInvoicesTotal > 0 ? paidInvoicesTotal : allInvoicedTotal);
-  const allExpenses = expenses.reduce(function(s, e) { return s + toNum_(e.amountDzd); }, 0);
-  const treasuryBalance = round2_(opening + effectiveCashIn - allExpenses);
+  const allInvoicedTotal = round2_(validInvoices.reduce(function(s, i) { return s + toNum_(i.totalDzd); }, 0));
+
+  const validInvIdMap = {};
+  validInvoices.forEach(function(i) { validInvIdMap[i.id] = true; });
+
+  const linkedPaymentsSum = round2_(payments.filter(function(p) {
+    return p.invoiceId && validInvIdMap[p.invoiceId];
+  }).reduce(function(s, p) { return s + toNum_(p.amountDzd); }, 0));
+
+  const unlinkedPaymentsSum = round2_(payments.filter(function(p) {
+    return !p.invoiceId || !validInvIdMap[p.invoiceId];
+  }).reduce(function(s, p) { return s + toNum_(p.amountDzd); }, 0));
+
+  const pPaidInvIds = {};
+  payments.forEach(function(p) { if (p.invoiceId) pPaidInvIds[p.invoiceId] = true; });
+
+  const directPayeeSum = round2_(validInvoices.filter(function(i) {
+    return i.status === 'PAYEE' && !pPaidInvIds[i.id];
+  }).reduce(function(s, i) { return s + toNum_(i.totalDzd); }, 0));
+
+  const benefits = dbGetAll_('Benefits');
+  let manualRevenuesTotal = 0;
+  let allWithdrawalsTotal = 0;
+  benefits.forEach(function(b) {
+    if (b.type === 'REVENUE') manualRevenuesTotal += toNum_(b.amountDzd);
+    else if (b.type === 'WITHDRAWAL') allWithdrawalsTotal += toNum_(b.amountDzd);
+  });
+
+  const totalCashIn = round2_(linkedPaymentsSum + directPayeeSum + unlinkedPaymentsSum + manualRevenuesTotal);
+  const allExpenses = round2_(expenses.reduce(function(s, e) { return s + toNum_(e.amountDzd); }, 0));
+  const totalCashOut = round2_(allExpenses + allWithdrawalsTotal);
+  const treasuryBalance = round2_(opening + totalCashIn - totalCashOut);
 
   // 2. Period KPIs
   const periodPayments = payments.filter(function(p) {
@@ -968,19 +1057,27 @@ function handleGetDashboard_(user, payload) {
     const d = String(e.date || e.createdAt).slice(0, 10);
     return d >= startDate && d <= endDate;
   });
-  const periodBilledInvoices = invoices.filter(function(i) {
+  const periodBilledInvoices = validInvoices.filter(function(i) {
     const d = String(i.issueDate || i.createdAt).slice(0, 10);
-    return i.docType === 'FACTURE' && i.status !== 'DRAFT' && i.status !== 'ANNULEE' && d >= startDate && d <= endDate;
+    return d >= startDate && d <= endDate;
   });
 
   const periodInvoiced = round2_(periodBilledInvoices.reduce(function(s, i) { return s + toNum_(i.totalDzd); }, 0));
-  const periodPaid = round2_(periodPayments.reduce(function(s, p) { return s + toNum_(p.amountDzd); }, 0));
-  const cashReceived = periodPaid > 0 ? periodPaid : (periodInvoiced > 0 ? periodInvoiced : allInvoicedTotal);
+  const periodPaymentsSum = round2_(periodPayments.reduce(function(s, p) { return s + toNum_(p.amountDzd); }, 0));
+
+  const pPeriodPaidIds = {};
+  periodPayments.forEach(function(p) { if (p.invoiceId) pPeriodPaidIds[p.invoiceId] = true; });
+  const pDirectPaidSum = round2_(periodBilledInvoices.filter(function(i) {
+    return i.status === 'PAYEE' && !pPeriodPaidIds[i.id];
+  }).reduce(function(s, i) { return s + toNum_(i.totalDzd); }, 0));
+
+  const cashReceived = round2_(periodPaymentsSum + pDirectPaidSum);
   const totalExpenses = round2_(periodExpenses.reduce(function(s, e) { return s + toNum_(e.amountDzd); }, 0));
   const netProfit = round2_(cashReceived - totalExpenses);
+  const invoicedNetProfit = round2_(periodInvoiced - totalExpenses);
   const profitMargin = cashReceived > 0 ? round2_((netProfit / cashReceived) * 100) : 0;
-  const totalBilled = round2_(periodInvoiced > 0 ? periodInvoiced : allInvoicedTotal);
-  const collectionRate = totalBilled > 0 ? round2_(Math.min(100, (cashReceived / totalBilled) * 100)) : 0;
+  const totalBilled = periodInvoiced;
+  const collectionRate = totalBilled > 0 ? round2_(Math.min(100, (cashReceived / totalBilled) * 100)) : (cashReceived > 0 ? 100 : 0);
 
   // Open & overdue receivables (all active invoices)
   let outstandingReceivables = 0;
@@ -1035,9 +1132,13 @@ function handleGetDashboard_(user, payload) {
   const monthlyCashCurve = months6.map(function(m) {
     const rev = payments.filter(function(p) { return String(p.paymentDate || p.createdAt).slice(0, 7) === m; })
       .reduce(function(s, p) { return s + toNum_(p.amountDzd); }, 0);
+    const mDirectPayee = validInvoices.filter(function(inv) {
+      return inv.status === 'PAYEE' && String(inv.issueDate || '').slice(0, 7) === m && !pPaidInvIds[inv.id];
+    }).reduce(function(s, inv) { return s + toNum_(inv.totalDzd); }, 0);
+    const ci = round2_(rev + mDirectPayee);
     const exp = expenses.filter(function(e) { return String(e.date || e.createdAt).slice(0, 7) === m; })
       .reduce(function(s, e) { return s + toNum_(e.amountDzd); }, 0);
-    return { month: m, cashIn: round2_(rev), expenses: round2_(exp), profit: round2_(rev - exp) };
+    return { month: m, cashIn: ci, expenses: round2_(exp), profit: round2_(ci - exp) };
   });
 
   // Invoice status breakdown
@@ -1135,12 +1236,15 @@ function handleGetDashboard_(user, payload) {
   return {
     treasuryBalance: treasuryBalance,
     totalInvoiced: allInvoicedTotal,
+    totalCashIn: totalCashIn,
+    totalCashOut: totalCashOut,
     openingBalance: opening,
     kpis: {
       cashReceived: cashReceived,
       totalExpenses: totalExpenses,
       expenseCount: periodExpenses.length,
       netProfit: netProfit,
+      invoicedNetProfit: invoicedNetProfit,
       profitMargin: profitMargin,
       totalBilled: totalBilled,
       collectionRate: collectionRate,

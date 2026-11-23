@@ -116,10 +116,17 @@ function round2(n) {
 
 function enrichInv(inv, db) {
   const pays = db.payments.filter((p) => p.invoiceId === inv.id && p.status !== 'REJECTED');
-  const paidAmount = round2(pays.reduce((s, p) => s + Number(p.amount || 0), 0));
-  const paidDzd = round2(pays.reduce((s, p) => s + Number(p.amountDzd || 0), 0));
+  let paidAmount = round2(pays.reduce((s, p) => s + Number(p.amount || 0), 0));
+  let paidDzd = round2(pays.reduce((s, p) => s + Number(p.amountDzd || 0), 0));
   const total = round2(inv.total || 0);
   const totalDzd = round2(inv.totalDzd ?? total * Number(inv.exchangeRate || 1));
+
+  // If status is PAYEE and no payments explicitly logged, treat as fully paid
+  if (inv.status === 'PAYEE' && paidAmount === 0 && total > 0) {
+    paidAmount = total;
+    paidDzd = totalDzd;
+  }
+
   const remaining = round2(Math.max(0, total - paidAmount));
   const remainingDzd = round2(Math.max(0, totalDzd - paidDzd));
   const today = localToday();
@@ -131,6 +138,15 @@ function enrichInv(inv, db) {
     inv.dueDate < today;
   const daysOverdue = isOverdue ? Math.max(0, Math.floor((new Date(today) - new Date(inv.dueDate)) / 86400000)) : 0;
   const client = db.clients.find((c) => c.id === inv.clientId);
+
+  let displayStatus = inv.status;
+  if (inv.status === 'ANNULEE') displayStatus = 'ANNULEE';
+  else if (inv.status === 'DRAFT') displayStatus = 'DRAFT';
+  else if (inv.status === 'PAYEE' || remaining <= 0) displayStatus = 'PAYEE';
+  else if (paidAmount > 0) displayStatus = 'PARTIELLE';
+  else if (isOverdue) displayStatus = 'EN_RETARD';
+  else displayStatus = 'EN_ATTENTE';
+
   return {
     ...inv,
     payments: pays,
@@ -140,7 +156,7 @@ function enrichInv(inv, db) {
     remainingDzd,
     isOverdue,
     daysOverdue,
-    displayStatus: isOverdue ? 'EN_RETARD' : inv.status,
+    displayStatus,
     clientName: client ? (client.company || client.name) : (inv.clientName || 'Client'),
     clientEmail: client?.email || '',
     clientPhone: client?.phone || ''
@@ -150,9 +166,9 @@ function enrichInv(inv, db) {
 function computeTotals(items = [], discount = 0, rate = 1) {
   let subtotal = 0;
   const lines = (items || []).map((it) => {
-    const qty = Number(it.quantity || 1);
-    const up = Number(it.unitPrice || 0);
-    const tr = Number(it.taxRate !== undefined && it.taxRate !== '' ? it.taxRate : 19);
+    const qty = Math.max(1, Number(it.quantity || 1));
+    const up = Math.max(0, Number(it.unitPrice || 0));
+    const tr = Number(it.taxRate !== undefined && it.taxRate !== '' ? it.taxRate : 0);
     const net = round2(qty * up);
     subtotal += net;
     return {
@@ -165,7 +181,7 @@ function computeTotals(items = [], discount = 0, rate = 1) {
   });
 
   subtotal = round2(subtotal);
-  const disc = round2(Number(discount || 0));
+  const disc = round2(Math.max(0, Number(discount || 0)));
   const netCommercial = Math.max(0, round2(subtotal - disc));
   const discountRatio = subtotal > 0 ? (netCommercial / subtotal) : 1;
 
@@ -251,37 +267,41 @@ export async function runDemoAction(action, payload = {}, currentUser = null) {
       const opening = Number(db.settings.openingTreasuryBalance || 0);
       const invoices = db.invoices.map((i) => enrichInv(i, db));
       const validInvoices = invoices.filter((i) => i.docType === 'FACTURE' && !['DRAFT', 'ANNULEE'].includes(i.status));
+
+      // 1. All-time Invoiced Volume (إجمالي الفواتير الصادرة للعملاء)
       const allInvoicedTotal = round2(validInvoices.reduce((s, i) => s + Number(i.totalDzd || 0), 0));
 
+      // 2. All-time Cash In (الكاش الفعلي المحصل)
       const approvedPayments = db.payments.filter((p) => p.status !== 'REJECTED');
-      const allPaymentsTotal = round2(approvedPayments.reduce((s, p) => s + Number(p.amountDzd || 0), 0));
-      const paidInvoicesTotal = round2(validInvoices.reduce((s, i) => s + Number(i.paidDzd || (i.status === 'PAYEE' ? i.totalDzd : 0)), 0));
+      const validInvoiceIds = new Set(validInvoices.map((i) => i.id));
+      const linkedPaymentsSum = round2(approvedPayments.filter((p) => p.invoiceId && validInvoiceIds.has(p.invoiceId)).reduce((s, p) => s + Number(p.amountDzd || 0), 0));
+      const unlinkedPaymentsSum = round2(approvedPayments.filter((p) => !p.invoiceId || !validInvoiceIds.has(p.invoiceId)).reduce((s, p) => s + Number(p.amountDzd || 0), 0));
 
-      // Calculate effective cash/invoiced revenue: if separate payments logged use them, otherwise use invoices total
-      const effectiveCashIn = allPaymentsTotal > 0 ? allPaymentsTotal : (paidInvoicesTotal > 0 ? paidInvoicesTotal : allInvoicedTotal);
-      const allOut = round2(db.expenses.reduce((s, e) => s + Number(e.amountDzd || 0), 0));
-      const treasuryBalance = round2(opening + effectiveCashIn - allOut);
+      // Invoices marked PAYEE directly that don't have separate rows in db.payments
+      const paidInvoiceIdsWithPayments = new Set(approvedPayments.filter((p) => p.invoiceId).map((p) => p.invoiceId));
+      const directPayeeSum = round2(validInvoices.filter((i) => i.status === 'PAYEE' && !paidInvoiceIdsWithPayments.has(i.id)).reduce((s, i) => s + Number(i.totalDzd || 0), 0));
 
-      const start = payload.startDate || `${today.slice(0, 7)}-01`;
-      const end = payload.endDate || `${today.slice(0, 7)}-31`;
-      const pPays = approvedPayments.filter((p) => p.paymentDate >= start && p.paymentDate <= end);
-      const pExps = db.expenses.filter((e) => e.date >= start && e.date <= end);
-      const pInvs = invoices.filter((i) => i.docType === 'FACTURE' && !['DRAFT', 'ANNULEE'].includes(i.status) && i.issueDate >= start && i.issueDate <= end);
+      // Manual deposits/revenues from Benefits
+      const manualRevenues = round2(db.benefits.filter((b) => b.type === 'REVENUE').reduce((s, b) => s + Number(b.amountDzd || 0), 0));
 
-      const periodInvoiced = round2(pInvs.reduce((s, i) => s + Number(i.totalDzd || 0), 0));
-      const periodPayments = round2(pPays.reduce((s, p) => s + Number(p.amountDzd || 0), 0));
-      const cashReceived = periodPayments > 0 ? periodPayments : periodInvoiced;
-      const totalExpenses = round2(pExps.reduce((s, e) => s + Number(e.amountDzd || 0), 0));
-      const netProfit = round2(cashReceived - totalExpenses);
-      const totalBilled = periodInvoiced > 0 ? periodInvoiced : allInvoicedTotal;
+      const totalCashIn = round2(linkedPaymentsSum + directPayeeSum + unlinkedPaymentsSum + manualRevenues);
 
+      // 3. All-time Cash Out (المصاريف والسحوبات المدفوعة)
+      const allExpenses = round2(db.expenses.reduce((s, e) => s + Number(e.amountDzd || 0), 0));
+      const allWithdrawals = round2(db.benefits.filter((b) => b.type === 'WITHDRAWAL').reduce((s, b) => s + Number(b.amountDzd || 0), 0));
+      const totalCashOut = round2(allExpenses + allWithdrawals);
+
+      // 4. Real-time Treasury Balance (رصيد الخزينة الفعلي المتاح حالياً)
+      const treasuryBalance = round2(opening + totalCashIn - totalCashOut);
+
+      // 5. Receivables (المستحقات غير المحصلة)
       let outstandingReceivables = 0;
       let overdueReceivables = 0;
       let overdueCount = 0;
       const aging = { notDue: 0, d1_30: 0, d31_60: 0, d60Plus: 0 };
       const overdueList = [];
-      invoices.forEach((inv) => {
-        if (inv.docType !== 'FACTURE' || ['DRAFT', 'ANNULEE'].includes(inv.status) || inv.remainingDzd <= 0) return;
+      validInvoices.forEach((inv) => {
+        if (inv.remainingDzd <= 0) return;
         outstandingReceivables = round2(outstandingReceivables + inv.remainingDzd);
         if (inv.isOverdue) {
           overdueReceivables = round2(overdueReceivables + inv.remainingDzd);
@@ -294,6 +314,27 @@ export async function runDemoAction(action, payload = {}, currentUser = null) {
           aging.notDue = round2(aging.notDue + inv.remainingDzd);
         }
       });
+
+      // 6. Period-Filtered KPIs
+      const start = payload.startDate || `${today.slice(0, 7)}-01`;
+      const end = payload.endDate || `${today.slice(0, 7)}-31`;
+
+      const pInvs = validInvoices.filter((i) => i.issueDate >= start && i.issueDate <= end);
+      const periodInvoiced = round2(pInvs.reduce((s, i) => s + Number(i.totalDzd || 0), 0));
+
+      const pPays = approvedPayments.filter((p) => p.paymentDate >= start && p.paymentDate <= end);
+      const periodPaymentsSum = round2(pPays.reduce((s, p) => s + Number(p.amountDzd || 0), 0));
+
+      // Direct PAYEE invoices issued in period with no separate payment rows
+      const pPayInvoiceIds = new Set(pPays.map((p) => p.invoiceId));
+      const pDirectPaidSum = round2(pInvs.filter((i) => i.status === 'PAYEE' && !pPayInvoiceIds.has(i.id)).reduce((s, i) => s + Number(i.totalDzd || 0), 0));
+      const cashReceived = round2(periodPaymentsSum + pDirectPaidSum);
+
+      const pExps = db.expenses.filter((e) => e.date >= start && e.date <= end);
+      const totalExpenses = round2(pExps.reduce((s, e) => s + Number(e.amountDzd || 0), 0));
+      const netProfit = round2(cashReceived - totalExpenses);
+      const invoicedNetProfit = round2(periodInvoiced - totalExpenses);
+      const totalBilled = periodInvoiced;
 
       const unpaidBills = db.supplierBills.filter((b) => b.status !== 'PAYEE');
       const supplierPayables = round2(unpaidBills.reduce((s, b) => {
@@ -318,7 +359,9 @@ export async function runDemoAction(action, payload = {}, currentUser = null) {
         d.setDate(1);
         d.setMonth(d.getMonth() - i);
         const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-        const ci = round2(approvedPayments.filter((p) => p.paymentDate.startsWith(ym)).reduce((s, p) => s + Number(p.amountDzd || 0), 0));
+        const mPays = approvedPayments.filter((p) => p.paymentDate.startsWith(ym)).reduce((s, p) => s + Number(p.amountDzd || 0), 0);
+        const mDirectPayee = validInvoices.filter((inv) => inv.status === 'PAYEE' && inv.issueDate.startsWith(ym) && !paidInvoiceIdsWithPayments.has(inv.id)).reduce((s, inv) => s + Number(inv.totalDzd || 0), 0);
+        const ci = round2(mPays + mDirectPayee);
         const ex = round2(db.expenses.filter((e) => e.date.startsWith(ym)).reduce((s, e) => s + Number(e.amountDzd || 0), 0));
         months.push({ month: ym, cashIn: ci, expenses: ex, profit: round2(ci - ex) });
       }
@@ -370,11 +413,13 @@ export async function runDemoAction(action, payload = {}, currentUser = null) {
       return {
         treasuryBalance,
         totalInvoiced: allInvoicedTotal,
+        totalCashIn,
+        totalCashOut,
         openingBalance: opening,
         kpis: {
-          cashReceived, totalExpenses, expenseCount: pExps.length, netProfit,
+          cashReceived, totalExpenses, expenseCount: pExps.length, netProfit, invoicedNetProfit,
           profitMargin: cashReceived > 0 ? Math.round((netProfit / cashReceived) * 100) : 0,
-          totalBilled, collectionRate: totalBilled > 0 ? Math.min(100, Math.round((cashReceived / totalBilled) * 100)) : 0,
+          totalBilled, collectionRate: totalBilled > 0 ? Math.min(100, Math.round((cashReceived / totalBilled) * 100)) : (cashReceived > 0 ? 100 : 0),
           outstandingReceivables, overdueReceivables, overdueCount,
           supplierPayables, overduePayables,
           dso: totalBilled > 0 ? Math.round((outstandingReceivables / totalBilled) * 30) : 0,
@@ -387,9 +432,27 @@ export async function runDemoAction(action, payload = {}, currentUser = null) {
 
     case 'getBenefits': {
       const opening = Number(db.settings.openingTreasuryBalance || 0);
-      const paidInvIds = new Set(db.payments.filter((p) => p.status !== 'REJECTED').map((p) => p.invoiceId));
-      const invoiceRevenues = db.invoices
-        .filter((i) => i.docType === 'FACTURE' && !['DRAFT', 'ANNULEE'].includes(i.status) && !paidInvIds.has(i.id))
+      const approvedPayments = db.payments.filter((p) => p.status !== 'REJECTED');
+      const paidInvoiceIdsWithPayments = new Set(approvedPayments.filter((p) => p.invoiceId).map((p) => p.invoiceId));
+
+      const paymentRevenues = approvedPayments.map((p) => {
+        const cl = db.clients.find((c) => c.id === p.clientId);
+        const inv = db.invoices.find((i) => i.id === p.invoiceId);
+        return {
+          id: `pay_${p.id}`,
+          source: 'INVOICE_PAYMENT',
+          readOnly: true,
+          date: p.paymentDate,
+          type: 'REVENUE',
+          category: 'CLIENT_PAYMENT',
+          description: (inv && inv.number ? `${inv.number} — ` : '') + (cl ? (cl.company || cl.name) : 'Client'),
+          amountDzd: Number(p.amountDzd || p.amount || 0),
+          notes: p.notes || ''
+        };
+      });
+
+      const directPayeeInvoices = db.invoices
+        .filter((i) => i.docType === 'FACTURE' && i.status === 'PAYEE' && !paidInvoiceIdsWithPayments.has(i.id))
         .map((i) => {
           const cl = db.clients.find((c) => c.id === i.clientId);
           return {
@@ -398,22 +461,34 @@ export async function runDemoAction(action, payload = {}, currentUser = null) {
             readOnly: true,
             date: i.issueDate || today,
             type: 'REVENUE',
-            category: 'FACTURE_CLIENT',
-            description: (cl ? (cl.company || cl.name) : (i.clientName || 'Facture Client')) + (i.number ? ` (${i.number})` : ''),
+            category: 'FACTURE_PAYEE',
+            description: `${i.number ? i.number + ' — ' : ''}${cl ? (cl.company || cl.name) : (i.clientName || 'Facture Payée')}`,
             amountDzd: Number(i.totalDzd || i.total || 0),
             notes: i.notes || ''
           };
         });
 
-      const merged = [
-        ...db.payments.filter((p) => p.status !== 'REJECTED').map((p) => {
-          const cl = db.clients.find((c) => c.id === p.clientId);
-          return { id: `pay_${p.id}`, source: 'INVOICE_PAYMENT', readOnly: true, date: p.paymentDate, type: 'REVENUE', category: 'CLIENT_PAYMENT', description: cl ? (cl.company || cl.name) : 'Client', amountDzd: Number(p.amountDzd), notes: p.notes };
-        }),
-        ...invoiceRevenues,
-        ...db.expenses.map((e) => ({ id: `exp_${e.id}`, source: 'AGENCY_EXPENSE', readOnly: true, date: e.date, type: 'EXPENSE', category: e.category, description: e.description, amountDzd: Number(e.amountDzd), notes: e.notes })),
-        ...db.benefits.map((b) => ({ ...b, source: 'MANUAL', readOnly: false, amountDzd: Number(b.amountDzd) }))
-      ].sort((a, b) => b.date.localeCompare(a.date));
+      const expenseList = db.expenses.map((e) => ({
+        id: `exp_${e.id}`,
+        source: 'AGENCY_EXPENSE',
+        readOnly: true,
+        date: e.date,
+        type: 'EXPENSE',
+        category: e.category,
+        description: e.description,
+        amountDzd: Number(e.amountDzd || e.amount || 0),
+        notes: e.notes || ''
+      }));
+
+      const manualTxList = db.benefits.map((b) => ({
+        ...b,
+        source: 'MANUAL',
+        readOnly: false,
+        amountDzd: Number(b.amountDzd || 0)
+      }));
+
+      const merged = [...paymentRevenues, ...directPayeeInvoices, ...expenseList, ...manualTxList]
+        .sort((a, b) => b.date.localeCompare(a.date));
 
       const allRev = round2(merged.filter((t) => t.type === 'REVENUE').reduce((s, t) => s + t.amountDzd, 0));
       const allExp = round2(merged.filter((t) => t.type === 'EXPENSE').reduce((s, t) => s + t.amountDzd, 0));
@@ -502,7 +577,8 @@ export async function runDemoAction(action, payload = {}, currentUser = null) {
         return { invoice: enrichInv(updated, db) };
       }
       let number = '';
-      if (payload.finalize) {
+      const isPaidNow = Boolean(payload.markPaid) || payload.status === 'PAYEE';
+      if (payload.finalize || isPaidNow) {
         db.counters[docType] = (db.counters[docType] || 0) + 1;
         number = `${docType === 'DEVIS' ? 'DEV' : 'FAC'}-${today.slice(0, 4)}-${String(db.counters[docType]).padStart(5, '0')}`;
       }
@@ -511,7 +587,7 @@ export async function runDemoAction(action, payload = {}, currentUser = null) {
         docType, number,
         clientId,
         clientName,
-        status: payload.finalize ? 'EN_ATTENTE' : 'DRAFT',
+        status: isPaidNow ? 'PAYEE' : (payload.finalize ? 'EN_ATTENTE' : 'DRAFT'),
         issueDate: payload.issueDate || today,
         dueDate: payload.dueDate || today,
         currency: payload.currency || 'DZD',
@@ -522,8 +598,58 @@ export async function runDemoAction(action, payload = {}, currentUser = null) {
         sentAt: '', viewedAt: '', createdAt: today
       };
       db.invoices.unshift(inv);
+
+      // If marked paid on creation, automatically log payment so treasury & cash receive it instantly
+      if (isPaidNow && docType === 'FACTURE' && calc.total > 0) {
+        db.payments.push({
+          id: uid('pay'),
+          invoiceId: inv.id,
+          clientId,
+          amount: calc.total,
+          currency: inv.currency,
+          exchangeRate: rate,
+          amountDzd: calc.totalDzd,
+          method: payload.paymentMethod || 'ESPECES',
+          paymentDate: inv.issueDate || today,
+          reference: 'PAID-ON-CREATE',
+          status: 'APPROVED',
+          notes: 'تسديد مباشر عند إنشاء الفاتورة'
+        });
+      }
       saveDb(db);
       return { invoice: enrichInv(inv, db) };
+    }
+    case 'markInvoicePaid': {
+      const inv = db.invoices.find((i) => i.id === payload.id);
+      if (!inv) throw new Error('Invoice not found');
+      const enriched = enrichInv(inv, db);
+      const remaining = Number(enriched.remaining || inv.total || 0);
+      const rate = Number(inv.exchangeRate || 1) || 1;
+      const payDate = payload.paymentDate || today;
+      const amountToPay = round2(remaining > 0 ? remaining : Number(inv.total || 0));
+
+      const pay = {
+        id: uid('pay'),
+        invoiceId: inv.id,
+        clientId: inv.clientId,
+        amount: amountToPay,
+        currency: inv.currency || 'DZD',
+        exchangeRate: rate,
+        amountDzd: round2(amountToPay * rate),
+        method: payload.method || 'ESPECES',
+        paymentDate: payDate,
+        reference: payload.reference || 'SOLDE-TOTAL',
+        status: 'APPROVED',
+        notes: payload.notes || 'تسديد كامل الفاتورة'
+      };
+      db.payments.push(pay);
+      inv.status = 'PAYEE';
+      if (!inv.number) {
+        db.counters[inv.docType] = (db.counters[inv.docType] || 0) + 1;
+        inv.number = `${inv.docType === 'DEVIS' ? 'DEV' : 'FAC'}-${today.slice(0, 4)}-${String(db.counters[inv.docType]).padStart(5, '0')}`;
+      }
+      saveDb(db);
+      return { invoice: enrichInv(inv, db), payment: pay };
     }
     case 'finalizeInvoice': {
       const inv = db.invoices.find((i) => i.id === payload.id);
