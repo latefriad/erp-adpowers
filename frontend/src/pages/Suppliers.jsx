@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, CheckCircle2, Trash2, CreditCard, Banknote, Calendar } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -20,9 +20,40 @@ export default function Suppliers() {
   const [billForm, setBillForm] = useState({ supplierId: '', description: '', category: 'MATERIEL', amount: '', currency: 'DZD', dueDate: todayIso() });
   const [versementForm, setVersementForm] = useState({ amount: '', date: todayIso(), method: 'VIREMENT', notes: '' });
 
-  const { data } = useQuery({ queryKey: ['suppliers'], queryFn: () => gasCall('listSuppliers') });
-  const suppliers = data?.suppliers || [];
-  const bills = data?.bills || [];
+  const { data: supData } = useQuery({ queryKey: ['suppliers'], queryFn: () => gasCall('listSuppliers') });
+  const { data: expData } = useQuery({ queryKey: ['expenses'], queryFn: () => gasCall('listExpenses') });
+
+  const suppliers = supData?.suppliers || [];
+  const rawBills = supData?.bills || [];
+  const expensesList = expData?.expenses || [];
+
+  // Compute expenses per supplier bill to ensure accurate paid amounts across old and new GAS versions
+  const expByBill = useMemo(() => {
+    const map = {};
+    expensesList.forEach((e) => {
+      if (e.supplierBillId) {
+        map[e.supplierBillId] = (map[e.supplierBillId] || 0) + Number(e.amountDzd || e.amount || 0);
+      }
+    });
+    return map;
+  }, [expensesList]);
+
+  // Enriched bills with accurate paid & remaining calculation
+  const bills = useMemo(() => {
+    return rawBills.map((b) => {
+      const total = Number(b.totalAmount || b.amountDzd || b.amount || 0);
+      const paid = Number(b.paidAmount !== undefined && b.paidAmount > 0 ? b.paidAmount : (expByBill[b.id] || 0));
+      const remaining = Number(b.remainingAmount !== undefined ? b.remainingAmount : Math.max(0, total - paid));
+      const isPaid = b.status === 'PAYEE' || (remaining <= 0.01 && total > 0);
+      return {
+        ...b,
+        totalAmount: total,
+        paidAmount: paid,
+        remainingAmount: remaining,
+        status: isPaid ? 'PAYEE' : (paid > 0 ? 'PARTIELLE' : (b.status || 'A_PAYER'))
+      };
+    });
+  }, [rawBills, expByBill]);
 
   const invalidateAll = () => {
     qc.invalidateQueries({ queryKey: ['suppliers'] });
@@ -32,9 +63,9 @@ export default function Suppliers() {
   };
 
   // Live KPI totals for Supplier Bills
-  const sumTotalBills = bills.reduce((s, b) => s + Number(b.totalAmount || b.amountDzd || b.amount || 0), 0);
+  const sumTotalBills = bills.reduce((s, b) => s + Number(b.totalAmount || 0), 0);
   const sumPaidBills = bills.reduce((s, b) => s + Number(b.paidAmount || 0), 0);
-  const sumRemainingBills = bills.reduce((s, b) => s + Math.max(0, Number(b.remainingAmount !== undefined ? b.remainingAmount : (b.amountDzd || b.amount || 0) - (b.paidAmount || 0))), 0);
+  const sumRemainingBills = bills.reduce((s, b) => s + Math.max(0, Number(b.remainingAmount || 0)), 0);
 
   const handleSaveSup = async (e) => {
     e.preventDefault();
@@ -67,8 +98,15 @@ export default function Suppliers() {
   };
 
   const openVersementModal = (bill) => {
-    const remaining = Number(bill.remainingAmount !== undefined ? bill.remainingAmount : (bill.amountDzd || bill.amount) - (bill.paidAmount || 0));
-    setVersementModal(bill);
+    const total = Number(bill.totalAmount || bill.amountDzd || bill.amount || 0);
+    const paid = Number(bill.paidAmount || 0);
+    const remaining = Number(bill.remainingAmount !== undefined ? bill.remainingAmount : Math.max(0, total - paid));
+    setVersementModal({
+      ...bill,
+      totalAmount: total,
+      paidAmount: paid,
+      remainingAmount: remaining
+    });
     setVersementForm({
       amount: String(remaining > 0 ? remaining : 0),
       date: todayIso(),
@@ -86,18 +124,70 @@ export default function Suppliers() {
         toast.error('يرجى إدخال مبلغ دفع صالح');
         return;
       }
-      await gasCall('recordSupplierBillPayment', {
-        billId: versementModal.id,
-        amount: payAmount,
-        date: versementForm.date,
-        method: versementForm.method,
-        notes: versementForm.notes
-      });
+
+      const total = Number(versementModal.totalAmount || versementModal.amountDzd || versementModal.amount || 0);
+      const paid = Number(versementModal.paidAmount || 0);
+      const remaining = Number(versementModal.remainingAmount !== undefined ? versementModal.remainingAmount : Math.max(0, total - paid));
+
+      if (payAmount > remaining + 0.01) {
+        toast.error(`المبلغ لا يمكن أن يتجاوز المتبقي (${formatMoney(remaining)})`);
+        return;
+      }
+
+      try {
+        // Try the dedicated versement action first
+        await gasCall('recordSupplierBillPayment', {
+          billId: versementModal.id,
+          amount: payAmount,
+          date: versementForm.date,
+          method: versementForm.method,
+          notes: versementForm.notes
+        });
+      } catch (backendErr) {
+        const errMsg = String(backendErr?.message || '');
+        // If Google Apps Script is running an older build that doesn't yet have 'recordSupplierBillPayment':
+        if (errMsg.includes('recordSupplierBillPayment') || errMsg.includes('Unknown action')) {
+          console.warn('[Versement] recordSupplierBillPayment not in GAS build. Using atomic saveExpense + saveSupplierBill fallback.');
+          const isFullyPaid = (paid + payAmount) >= total - 0.01;
+          const isPartial = !isFullyPaid;
+          const supName = versementModal.supplierName || suppliers.find((s) => s.id === versementModal.supplierId)?.name || '';
+
+          // 1. Save expense directly to Expenses tab & treasury
+          await gasCall('saveExpense', {
+            date: versementForm.date,
+            category: versementModal.category || 'MATERIEL',
+            description: `[Versement Fournisseur: ${supName}] ${versementModal.description}${isPartial ? ' (دفعة جزئية)' : ' (تسديد كامل)'}`,
+            amount: payAmount,
+            currency: versementModal.currency || 'DZD',
+            exchangeRate: versementModal.exchangeRate || 1,
+            amountDzd: payAmount,
+            supplierBillId: versementModal.id,
+            notes: (versementForm.notes ? `${versementForm.notes} • ` : '') + `طريقة الدفع: ${versementForm.method}`
+          });
+
+          // 2. Update SupplierBill status
+          await gasCall('saveSupplierBill', {
+            id: versementModal.id,
+            supplierId: versementModal.supplierId,
+            description: versementModal.description,
+            category: versementModal.category,
+            amount: versementModal.amount,
+            currency: versementModal.currency || 'DZD',
+            exchangeRate: versementModal.exchangeRate || 1,
+            dueDate: versementModal.dueDate,
+            status: isFullyPaid ? 'PAYEE' : 'PARTIELLE',
+            paidAt: isFullyPaid ? versementForm.date : (versementModal.paidAt || '')
+          });
+        } else {
+          throw backendErr;
+        }
+      }
+
       toast.success('تم تسجيل الدفعة (Versement) وإدراج المصروف وتحديث الخزينة ✓');
       setVersementModal(null);
       invalidateAll();
     } catch (err) {
-      toast.error(err.message);
+      toast.error(err.message || 'حدث خطأ أثناء تسجيل الدفعة');
     }
   };
 
@@ -401,7 +491,7 @@ export default function Suppliers() {
                     type="number"
                     min="1"
                     max={remaining}
-                    step="0.01"
+                    step="any"
                     required
                     value={versementForm.amount}
                     onChange={(e) => setVersementForm({ ...versementForm, amount: e.target.value })}
