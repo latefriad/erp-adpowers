@@ -271,20 +271,23 @@ export async function runDemoAction(action, payload = {}, currentUser = null) {
       // 1. All-time Invoiced Volume (إجمالي الفواتير الصادرة للعملاء)
       const allInvoicedTotal = round2(validInvoices.reduce((s, i) => s + Number(i.totalDzd || 0), 0));
 
-      // 2. All-time Cash In (الكاش الفعلي المحصل)
-      const approvedPayments = db.payments.filter((p) => p.status !== 'REJECTED');
+      // 2. All-time Cash In (الكاش الفعلي المحصل حصراً من الفواتير الحالية الصالحة)
       const validInvoiceIds = new Set(validInvoices.map((i) => i.id));
-      const linkedPaymentsSum = round2(approvedPayments.filter((p) => p.invoiceId && validInvoiceIds.has(p.invoiceId)).reduce((s, p) => s + Number(p.amountDzd || 0), 0));
-      const unlinkedPaymentsSum = round2(approvedPayments.filter((p) => !p.invoiceId || !validInvoiceIds.has(p.invoiceId)).reduce((s, p) => s + Number(p.amountDzd || 0), 0));
+      
+      // Auto-purge any orphaned payments whose invoice was deleted
+      db.payments = db.payments.filter((p) => !p.invoiceId || validInvoiceIds.has(p.invoiceId));
+
+      const approvedPayments = db.payments.filter((p) => p.status !== 'REJECTED' && p.invoiceId && validInvoiceIds.has(p.invoiceId));
+      const linkedPaymentsSum = round2(approvedPayments.reduce((s, p) => s + Number(p.amountDzd || 0), 0));
 
       // Invoices marked PAYEE directly that don't have separate rows in db.payments
-      const paidInvoiceIdsWithPayments = new Set(approvedPayments.filter((p) => p.invoiceId).map((p) => p.invoiceId));
+      const paidInvoiceIdsWithPayments = new Set(approvedPayments.map((p) => p.invoiceId));
       const directPayeeSum = round2(validInvoices.filter((i) => i.status === 'PAYEE' && !paidInvoiceIdsWithPayments.has(i.id)).reduce((s, i) => s + Number(i.totalDzd || 0), 0));
 
-      // Manual deposits/revenues from Benefits
+      // Standalone manual deposits/revenues from Benefits (not tied to invoices)
       const manualRevenues = round2(db.benefits.filter((b) => b.type === 'REVENUE').reduce((s, b) => s + Number(b.amountDzd || 0), 0));
 
-      const totalCashIn = round2(linkedPaymentsSum + directPayeeSum + unlinkedPaymentsSum + manualRevenues);
+      const totalCashIn = round2(linkedPaymentsSum + directPayeeSum + manualRevenues);
 
       // 3. All-time Cash Out (المصاريف والسحوبات المدفوعة)
       const allExpenses = round2(db.expenses.reduce((s, e) => s + Number(e.amountDzd || 0), 0));
@@ -432,8 +435,9 @@ export async function runDemoAction(action, payload = {}, currentUser = null) {
 
     case 'getBenefits': {
       const opening = Number(db.settings.openingTreasuryBalance || 0);
-      const approvedPayments = db.payments.filter((p) => p.status !== 'REJECTED');
-      const paidInvoiceIdsWithPayments = new Set(approvedPayments.filter((p) => p.invoiceId).map((p) => p.invoiceId));
+      const validInvoiceIds = new Set(db.invoices.filter((i) => i.docType === 'FACTURE' && !['DRAFT', 'ANNULEE'].includes(i.status)).map((i) => i.id));
+      const approvedPayments = db.payments.filter((p) => p.status !== 'REJECTED' && p.invoiceId && validInvoiceIds.has(p.invoiceId));
+      const paidInvoiceIdsWithPayments = new Set(approvedPayments.map((p) => p.invoiceId));
 
       const paymentRevenues = approvedPayments.map((p) => {
         const cl = db.clients.find((c) => c.id === p.clientId);

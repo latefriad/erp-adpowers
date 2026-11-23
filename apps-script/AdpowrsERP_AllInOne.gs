@@ -1861,9 +1861,19 @@ function handleGetBenefits_(user, payload) {
   const clientMap = {};
   clients.forEach(function(c) { clientMap[c.id] = c; });
 
+  const validInvIdMap = {};
+  invoices.forEach(function(i) {
+    if (i.docType === 'FACTURE' && i.status !== 'DRAFT' && i.status !== 'ANNULEE') {
+      validInvIdMap[i.id] = true;
+    }
+  });
+
   const merged = [];
   const paidInvIds = {};
   payments.forEach(function(p) {
+    // Skip orphaned payments from deleted invoices
+    if (p.invoiceId && !validInvIdMap[p.invoiceId]) return;
+
     if (p.invoiceId) paidInvIds[p.invoiceId] = true;
     const inv = invMap[p.invoiceId];
     const cl = clientMap[p.clientId];
@@ -2067,16 +2077,21 @@ function handleGetDashboard_(user, payload) {
   const validInvIdMap = {};
   validInvoices.forEach(function(i) { validInvIdMap[i.id] = true; });
 
-  const linkedPaymentsSum = round2_(payments.filter(function(p) {
+  // Only payments tied to existing valid invoices count
+  const validPayments = payments.filter(function(p) {
     return p.invoiceId && validInvIdMap[p.invoiceId];
-  }).reduce(function(s, p) { return s + toNum_(p.amountDzd); }, 0));
+  });
+  const linkedPaymentsSum = round2_(validPayments.reduce(function(s, p) { return s + toNum_(p.amountDzd); }, 0));
 
-  const unlinkedPaymentsSum = round2_(payments.filter(function(p) {
-    return !p.invoiceId || !validInvIdMap[p.invoiceId];
-  }).reduce(function(s, p) { return s + toNum_(p.amountDzd); }, 0));
+  // Auto-purge any orphaned payments from deleted invoices from the database
+  payments.forEach(function(p) {
+    if (p.invoiceId && !validInvIdMap[p.invoiceId]) {
+      try { dbDelete_('Payments', p.id); } catch (e) {}
+    }
+  });
 
   const pPaidInvIds = {};
-  payments.forEach(function(p) { if (p.invoiceId) pPaidInvIds[p.invoiceId] = true; });
+  validPayments.forEach(function(p) { if (p.invoiceId) pPaidInvIds[p.invoiceId] = true; });
 
   const directPayeeSum = round2_(validInvoices.filter(function(i) {
     return i.status === 'PAYEE' && !pPaidInvIds[i.id];
@@ -2090,13 +2105,13 @@ function handleGetDashboard_(user, payload) {
     else if (b.type === 'WITHDRAWAL') allWithdrawalsTotal += toNum_(b.amountDzd);
   });
 
-  const totalCashIn = round2_(linkedPaymentsSum + directPayeeSum + unlinkedPaymentsSum + manualRevenuesTotal);
+  const totalCashIn = round2_(linkedPaymentsSum + directPayeeSum + manualRevenuesTotal);
   const allExpenses = round2_(expenses.reduce(function(s, e) { return s + toNum_(e.amountDzd); }, 0));
   const totalCashOut = round2_(allExpenses + allWithdrawalsTotal);
   const treasuryBalance = round2_(opening + totalCashIn - totalCashOut);
 
   // 2. Period KPIs
-  const periodPayments = payments.filter(function(p) {
+  const periodPayments = validPayments.filter(function(p) {
     const d = String(p.paymentDate || p.createdAt).slice(0, 10);
     return d >= startDate && d <= endDate;
   });
