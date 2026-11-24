@@ -26,6 +26,8 @@ export function AuthProvider({ children }) {
     async function init() {
       const token = getAuthToken();
       if (!token && !isDemoMode()) {
+        setUser(null);
+        try { localStorage.removeItem('adpowrs_user'); } catch (e) {}
         setLoading(false);
         return;
       }
@@ -48,8 +50,10 @@ export function AuthProvider({ children }) {
           applyBrandColors(res.settings);
         }
       } catch (e) {
+        if (!active) return;
         setUser(null);
         setAuthToken('');
+        try { localStorage.removeItem('adpowrs_user'); } catch (err) {}
       } finally {
         if (active) setLoading(false);
       }
@@ -58,7 +62,8 @@ export function AuthProvider({ children }) {
 
     const onUnauth = () => {
       setUser(null);
-      localStorage.removeItem('adpowrs_user');
+      setAuthToken('');
+      try { localStorage.removeItem('adpowrs_user'); } catch (e) {}
     };
     window.addEventListener('adpowrs:unauthorized', onUnauth);
     return () => {

@@ -38,6 +38,14 @@ export function setAuthToken(token) {
   } catch (e) {}
 }
 
+export class GasApiError extends Error {
+  constructor(message, code) {
+    super(message);
+    this.name = 'GasApiError';
+    this.code = code;
+  }
+}
+
 /**
  * Calls the Google Apps Script Web App via CORS-safe `POST text/plain`.
  * If no GAS URL is configured yet or if GAS returns authorization/network errors,
@@ -69,16 +77,30 @@ export async function gasCall(action, payload = {}, opts = {}) {
     const contentType = res.headers.get('content-type') || '';
     const text = await res.text();
 
-    // Check if Google returned an HTML page (e.g. 403 Forbidden / "Une autorisation est nécessaire")
+    // Check specifically if Google returned an access/authorization restriction page
+    // (e.g. redirected to accounts.google.com sign-in or "Une autorisation est nécessaire")
     const isHtml = contentType.includes('text/html') || text.trim().startsWith('<!DOCTYPE') || text.trim().startsWith('<html');
+    const isGoogleAuthBlocked = isHtml && (
+      text.includes('accounts.google.com') ||
+      text.includes('Une autorisation est nécessaire') ||
+      text.includes('Authorization is required') ||
+      text.includes('Sign in - Google Accounts') ||
+      res.status === 401 ||
+      res.status === 403
+    );
 
-    if (!res.ok || isHtml) {
-      console.warn(`[Adpowrs API] Google Apps Script returned status ${res.status} or HTML. Falling back to local storage.`);
+    if (isGoogleAuthBlocked) {
+      console.warn(`[Adpowrs API] Google Apps Script deployment is restricted (status ${res.status}). Triggering setup notification.`);
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('adpowrs:gas_auth_warning', {
           detail: { status: res.status, url: apiUrl }
         }));
       }
+      return runDemoAction(action, payload, getDemoUser());
+    }
+
+    if (!res.ok || isHtml) {
+      console.warn(`[Adpowrs API] Google Apps Script returned status ${res.status}. Falling back to local storage.`);
       return runDemoAction(action, payload, getDemoUser());
     }
 
@@ -93,11 +115,13 @@ export async function gasCall(action, payload = {}, opts = {}) {
     if (!json.ok) {
       if (json.code === 'UNAUTHORIZED') {
         setAuthToken('');
+        try { localStorage.removeItem('adpowrs_user'); } catch (e) {}
         if (typeof window !== 'undefined') {
           window.dispatchEvent(new CustomEvent('adpowrs:unauthorized'));
         }
       }
-      throw new Error(json.error || 'Apps Script API error');
+      // Throw GasApiError so callers know this is a real server-side application response, NOT a connection failure!
+      throw new GasApiError(json.error || 'Apps Script API error', json.code);
     }
 
     if (typeof window !== 'undefined') {
@@ -106,17 +130,18 @@ export async function gasCall(action, payload = {}, opts = {}) {
 
     return json.data;
   } catch (err) {
-    // If network error (CORS, offline, DNS, or blocked fetch)
-    if (err.message && !err.message.includes('Apps Script API error')) {
-      console.warn(`[Adpowrs API] Network failure (${err.message}). Using local store fallback.`);
+    // If it's a genuine response from Google Apps Script (e.g. invalid password, session expired, validation)
+    // do NOT show the Google Apps Script permissions/deployment warning!
+    if (err instanceof GasApiError) {
       if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('adpowrs:gas_auth_warning', {
-          detail: { message: err.message, url: apiUrl }
-        }));
+        window.dispatchEvent(new CustomEvent('adpowrs:gas_connected'));
       }
-      return runDemoAction(action, payload, getDemoUser());
+      throw err;
     }
-    throw err;
+
+    // Truly offline or temporary fetch error (e.g. device woke from sleep, Wi-Fi reconnecting)
+    console.warn(`[Adpowrs API] Network or fetch error (${err.message}). Using local store fallback.`);
+    return runDemoAction(action, payload, getDemoUser());
   }
 }
 

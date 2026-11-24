@@ -6,7 +6,7 @@
  */
 
 const VALID_ROLES = ['ADMIN', 'ACCOUNTANT', 'MEDIA_BUYER', 'TEAM'];
-const SESSION_TTL_HOURS = 24 * 7; // 7 days
+const SESSION_TTL_HOURS = 24 * 30; // 30 days session persistence
 
 function hashPassword_(password, salt) {
   const bytes = Utilities.computeDigest(
